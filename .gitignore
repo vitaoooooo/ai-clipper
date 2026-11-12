@@ -18,3 +18,4 @@ config.toml
 
 # configuracao local do Claude Code (caminhos desta maquina)
 .claude/settings.local.json
+CLAUDE.local.md

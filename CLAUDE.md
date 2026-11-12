@@ -87,7 +87,7 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 ## Convencoes e armadilhas
 
 - O codigo e as mensagens sao em portugues, **sem acentos** nas strings e nos identificadores. Mantenha o padrao.
-- Python >= 3.10 (`X | None`, `list[str]`). O PC do usuario roda 3.14, no Windows.
+- Python >= 3.10 (`X | None`, `list[str]`). Desenvolvido e usado no Windows.
 - O ffmpeg roda com `cwd=pasta_cortes` e recebe so o **nome** do `.ass` no filtro `subtitles`, porque
   caminhos do Windows (`C:\...`) quebram o filtro. Nao troque por caminho absoluto.
 - Resolucao fixa de 1080x1920 (`render/layouts.py`). As posicoes das legendas no `.ass` dependem dela.
@@ -119,7 +119,7 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   renderizado); se so alguns falharem, imprime um aviso e eles ficam com nota <= 5.
 - Whisper: o audio e decodificado pelo ffmpeg (`transcricao.carregar_audio`) e passado como array ao
   faster-whisper, porque o PyAV 19+ quebrou a decodificacao interna dele (`metadata_errors`). Nao volte a
-  passar o caminho do arquivo. GPU (RTX 2060 do usuario): as DLLs do CUDA vem do extra `gpu`
+  passar o caminho do arquivo. GPU NVIDIA: as DLLs do CUDA vem do extra `gpu`
   (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) e `_registrar_dlls_cuda()` as poe no caminho de busca do Windows.
   Sem elas, cai para a CPU, que e muito mais lenta.
 - Antes de mexer em `ajuste.py`, `legendas.py` ou `layouts.py`, rode `pytest`. Os testes de render
@@ -141,23 +141,3 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   margem de 40s antes e `falta_contexto`. Ideia: refazer o candidato com janela maior quando `falta_contexto`.
 - **Fase 2:** ligar o `historico.py`, processar varios links de uma vez, fila de posts com horarios.
 - **Fase 3:** envio ao TikTok como rascunho (`tiktok.py`) e metricas de desempenho dos cortes.
-
-## Notas do projeto (Obsidian)
-
-O vault do Obsidian do projeto fica em `C:\obsidian\Projeto Clipador` (liberado como diretorio extra em
-`.claude/settings.local.json`). Divisao: este CLAUDE.md e a fonte da verdade **tecnica**; o vault guarda
-planejamento, decisoes, historico e ideias. As notas do vault sao escritas em portugues **com** acentos
-(a regra de "sem acentos" vale so para o codigo).
-
-- `Clipador.md`: nota inicial, com links para as outras
-- `Roteiro.md`: fases com checkboxes (`- [ ]` / `- [x]`)
-- `Decisoes.md` (o arquivo se chama `Decisões.md`): decisoes com data, motivo e consequencia; a mais nova em cima
-- `Log.md`: diario com data (DD/MM/AAAA); a entrada mais nova em cima
-- `Ideias.md`: caixa de entrada do usuario. Leia, mas so mexa se ele pedir
-
-Como usar:
-- No inicio de uma tarefa grande, leia `Roteiro.md` e `Decisões.md` para ter o contexto.
-- Ao terminar uma tarefa que mudou o comportamento, adicione uma entrada no `Log.md` e marque o item no `Roteiro.md`.
-- Decisao de arquitetura ou de produto nova: registre no `Decisões.md` (e, se for armadilha tecnica, aqui tambem).
-- Use links do Obsidian (`[[Roteiro]]`, `[[Decisões]]`) entre as notas. Nao apague notas do vault sem pedir.
-- O vault nao afeta o pipeline: o `claude -p` de `selecao/ia.py` roda isolado e nao le nada disso.
