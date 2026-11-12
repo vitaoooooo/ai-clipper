@@ -21,6 +21,8 @@ clipador "<link>" --sem-visao     # so a 1a passada (escolhe pela transcricao, s
 clipador "<link>" --candidatos 15 # quantos trechos a 1a passada pre-seleciona para a 2a (padrao 12)
 clipador "<link>" --sem-ia        # sem IA (corta pelos picos de audio)
 clipador "<link>" --reprisar-ia   # reusa as respostas salvas da IA (testar sem gastar cota)
+clipador "<link1>" "<link2>"      # varios videos, um depois do outro
+clipador --lista links.txt        # um link por linha (# = comentario)
 ```
 
 Dependencias externas: `ffmpeg`/`ffprobe` no PATH e o Claude Code (`claude`) no PATH, logado com a conta do
@@ -77,6 +79,10 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 
 ## Estrutura
 
+- `lote.py`: varios videos (links na CLI + `--lista`, sem repetir). Roda `pipeline.executar` em cada um;
+  video que falhar (qualquer `Exception`) vira erro so dele e o lote segue; no fim, `ui.resumo_lote`.
+  Com um video so, o erro sobe normal. Saida com codigo 1 se algum falhar. `executar` devolve
+  `{titulo, pasta, posts}`.
 - `cli.py`: argparse. Toda opcao tem `default=None`, para so sobrescrever a config quando for passada.
   Mostra o banner e transforma `RuntimeError`/Ctrl+C num painel de erro (sem traceback).
 - `selecao/reprise.py` (`--reprisar-ia`): `ia.reprise` ligado faz o `chamar_ia` devolver as respostas
@@ -93,7 +99,7 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 - `modelos.py`: `Video` e `Corte` sao dataclasses. Segmentos e palavras continuam `TypedDict` (dict) para
   manter compativel o cache `transcricao.json`. Nao converta para dataclass sem migrar o cache.
 - Modulos que ja existem mas **ainda nao estao ligados ao pipeline**:
-  `publicacao/historico.py` (SQLite) e `publicacao/tiktok.py` (so um esboco).
+  `publicacao/historico.py` (SQLite).
 
 ## Convencoes e armadilhas
 
@@ -139,7 +145,8 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   Sem elas, cai para a CPU, que e muito mais lenta.
 - Antes de mexer em `ajuste.py`, `legendas.py` ou `layouts.py`, rode `pytest`. Os testes de render
   geram um video sintetico e confirmam 1080x1920 nos tres modos.
-- Nao automatize postagem no TikTok via navegador (risco de banir a conta). O plano e usar a Content Posting API oficial, enviando como rascunho.
+- A postagem no TikTok e **manual** (decisao de 12/11/2026: sem Content Posting API; o `tiktok.py` foi
+  apagado). Nao automatize postagem via navegador (risco de banir a conta).
 
 ## Roteiro
 
@@ -154,5 +161,7 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 - **Feito (12/11/2026):** a 2a passada corrige inicio/fim olhando a tela; `ajuste.py` idempotente;
   prompts reescritos com o `GUIA_CLIPAGEM` como prompt de sistema, `climax`/`contexto` da 1a passada,
   margem de 40s antes e `falta_contexto`. Ideia: refazer o candidato com janela maior quando `falta_contexto`.
-- **Fase 2:** ligar o `historico.py`, processar varios links de uma vez, fila de posts com horarios.
-- **Fase 3:** envio ao TikTok como rascunho (`tiktok.py`) e metricas de desempenho dos cortes.
+- **Feito (12/11/2026):** terminal com `rich` (`ui.py`), `--reprisar-ia` e varios videos de uma vez
+  (`lote.py`, item 1 da fase 2). Envio automatico ao TikTok descartado: a postagem e manual.
+- **Fase 2 (falta):** ligar o `historico.py`, fila de posts com horarios.
+- **Fase 3:** metricas de desempenho dos cortes (anotadas a mao, ja que a postagem e manual).

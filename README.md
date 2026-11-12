@@ -39,6 +39,8 @@ pip install -r requirements.txt # inclui CUDA para o Whisper; sem NVIDIA use: pi
 ```bash
 clipador "https://youtube.com/watch?v=XXXX" --credito "@criador"
 clipador video.mp4 --cortes 8 --modo crop
+clipador "<link1>" "<link2>" "<link3>"   # vários vídeos, um depois do outro
+clipador --lista links.txt               # um link por linha
 clipador "<link>" --min 61 --max 90      # cortes com mais de 1 min (Creator Rewards)
 clipador "<link>" --sem-ia               # sem IA: corta nos picos de áudio
 ```
@@ -48,6 +50,7 @@ clipador "<link>" --sem-ia               # sem IA: corta nos picos de áudio
 | `--cortes N` | quantos cortes gerar (padrão 5) |
 | `--min` / `--max` | duração dos cortes em segundos (padrão 20 a 60) |
 | `--modo blur\|crop\|facecam` | layout vertical (`--facecam x,y,w,h` em frações do vídeo) |
+| `--lista links.txt` | processa vários vídeos; se um falhar, os outros continuam |
 | `--canal nome` | usa um preset do `config.toml` (veja `config.example.toml`) |
 | `--chat` | usa os picos do chat da live como sinal (opcional) |
 | `--sem-visao` | pula a 2ª passada (gasta menos cota) |
@@ -68,7 +71,8 @@ pytest
 
 - [x] Cortes com IA em duas passadas, legendas e layouts
 - [x] Sinais de áudio, movimento na tela e chat
-- [ ] Histórico, vários links de uma vez e fila de posts
-- [ ] Envio ao TikTok como rascunho pela Content Posting API oficial
+- [x] Vários vídeos de uma vez (`--lista`)
+- [ ] Histórico e fila de posts com horários
+- [ ] Métricas de desempenho dos cortes
 
 > Use só vídeos que você tem autorização para cortar e guarde a autorização do criador.

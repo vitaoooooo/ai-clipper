@@ -1,1 +1,1 @@
-"""Textos do post, historico do que foi gerado/postado e envio ao TikTok."""
+"""Textos do post e historico do que foi gerado/postado (a postagem no TikTok e manual)."""
