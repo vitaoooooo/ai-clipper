@@ -132,7 +132,7 @@ def _logo() -> Text:
     return t
 
 
-def banner(fonte: str, cfg, versao: str):
+def banner(fontes: list[str], cfg, versao: str):
     console.print()
     if console.width >= 66:
         console.print(_logo(), end="")
@@ -145,7 +145,10 @@ def banner(fonte: str, cfg, versao: str):
     t = Table.grid(padding=(0, 2))
     t.add_column(style="fraco", justify="right")
     t.add_column()
-    t.add_row("fonte", Text(fonte, style="bold"))
+    if len(fontes) == 1:
+        t.add_row("fonte", Text(fontes[0], style="bold"))
+    else:
+        t.add_row("fontes", Text(f"{len(fontes)} videos, um depois do outro", style="bold"))
     t.add_row("cortes", f"{cfg.cortes} de {cfg.dmin} a {cfg.dmax}s  ·  layout {cfg.modo}")
     if cfg.sem_ia:
         ia = Text("desligada (picos de audio)", style="aviso")
@@ -162,6 +165,44 @@ def banner(fonte: str, cfg, versao: str):
     if cfg.credito:
         t.add_row("credito", cfg.credito)
     console.print(Panel(t, border_style="grey35", box=box.ROUNDED, padding=(0, 1), expand=False))
+
+
+# ---------------------------------------------------------------- lote (varios videos)
+
+def cabecalho_video(i: int, total: int, fonte: str):
+    console.print()
+    console.print(Panel(Text(fonte, style="bold", overflow="fold"),
+                        title=Text(f" video {i}/{total} ", style=f"bold black on {CIANO}"),
+                        title_align="left", border_style=CIANO, box=box.HEAVY, padding=(0, 1)))
+
+
+def resumo_lote(resultados: list[dict]):
+    console.print()
+    tab = Table(box=box.SIMPLE_HEAD, header_style="bold", border_style="grey35", pad_edge=False,
+                title=Text("resumo do lote", style=f"bold {CIANO}"), title_justify="left")
+    tab.add_column("#", style="fraco", justify="right")
+    tab.add_column("video", overflow="fold")
+    tab.add_column("cortes", justify="right")
+    tab.add_column("tempo", justify="right", style="fraco")
+    tab.add_column("tokens", justify="right", style="tok")
+    for i, r in enumerate(resultados, 1):
+        if r["ok"]:
+            video, cortes = Text(r["titulo"]), Text(str(r["cortes"]), style="ok")
+        else:
+            video = Text.assemble((r["fonte"], ""), ("\n" + r["erro"], "erro"))
+            cortes = Text("falhou", style="erro")
+        tokens = f"{_k(r['entrada'])} / {_k(r['saida'])}" if r.get("chamadas") else "-"
+        tab.add_row(f"{i:02d}", video, cortes, _dur(r["tempo"]), tokens)
+    console.print(tab)
+    ok_ = [r for r in resultados if r["ok"]]
+    falhas = len(resultados) - len(ok_)
+    linha = Text.assemble((f"{len(ok_)} de {len(resultados)} videos", "bold"),
+                          (f"  ·  {sum(r['cortes'] for r in ok_)} cortes", "ok"),
+                          ("  ·  tempo total ", "fraco"), (_dur(sum(r["tempo"] for r in resultados)), "bold"))
+    if falhas:
+        linha.append(f"\n{falhas} falharam: rode o mesmo comando de novo; o que ja foi feito vem do cache",
+                     style="aviso")
+    console.print(Panel(linha, border_style="ciano", box=box.ROUNDED, padding=(0, 2), expand=False))
 
 
 # ---------------------------------------------------------------- etapas

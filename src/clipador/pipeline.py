@@ -48,7 +48,8 @@ def console_status(msg: str):
     return ui.console.status(ui.Text("  " + msg), spinner="dots", spinner_style="rosa")
 
 
-def executar(fonte: str, cfg: Config) -> list[dict]:
+def executar(fonte: str, cfg: Config) -> dict:
+    """Um video do comeco ao fim. Devolve {"titulo", "pasta" (dos cortes), "posts"}."""
     checar_ffmpeg()
     com_visao = cfg.visao and not cfg.sem_ia
     ui.iniciar(6 if com_visao else 5)
@@ -138,4 +139,4 @@ def executar(fonte: str, cfg: Config) -> list[dict]:
         ui.ok("posts.txt e posts.json com legenda, hashtags e credito")
 
     ui.resumo(cortes, pasta_cortes, com_nota=not cfg.sem_ia)
-    return posts
+    return {"titulo": video.titulo, "pasta": pasta_cortes, "posts": posts}

@@ -3,14 +3,16 @@ import argparse
 import sys
 from pathlib import Path
 
-from clipador import __version__, config, pipeline, ui
+from clipador import __version__, config, lote, ui
 from clipador.config import MODOS, parse_facecam
 
 
 def criar_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="clipador",
                                 description="Gera cortes de TikTok a partir de um video longo, com IA.")
-    p.add_argument("fonte", help="Link do YouTube/Twitch ou caminho de um arquivo de video")
+    p.add_argument("fontes", nargs="*", metavar="fonte",
+                   help="Links do YouTube/Twitch ou caminhos de arquivos de video (um ou varios)")
+    p.add_argument("--lista", help="Arquivo .txt com um link por linha (linhas com # sao ignoradas)")
     p.add_argument("--config", type=Path, help="Arquivo de config (padrao: ./config.toml se existir)")
     p.add_argument("--canal", help="Preset de [canais.<nome>] da config")
     # default=None em tudo: so sobrescreve a config quando o usuario passa a opcao
@@ -64,20 +66,25 @@ def main(argv=None):
     _console_utf8()
     parser = criar_parser()
     a = parser.parse_args(argv)
-    sobrescritas = {k: v for k, v in vars(a).items() if k not in ("fonte", "config", "canal")}
+    sobrescritas = {k: v for k, v in vars(a).items() if k not in ("fontes", "lista", "config", "canal")}
     try:
         cfg = config.carregar(a.config, a.canal, sobrescritas)
+        fontes = lote.juntar_fontes(a.fontes, a.lista)
     except (ValueError, OSError) as e:
         parser.error(str(e))
-    ui.banner(a.fonte, cfg, __version__)
+    if not fontes:
+        parser.error("passe pelo menos um link/arquivo ou --lista <arquivo.txt>")
+    ui.banner(fontes, cfg, __version__)
     try:
-        pipeline.executar(a.fonte, cfg)
+        resultados = lote.executar_lote(fontes, cfg)
     except KeyboardInterrupt:
         ui.erro("interrompido", "Parado pelo usuario (Ctrl+C). O que ja foi feito ficou em cache: "
                                 "rodar de novo continua de onde parou.")
         sys.exit(130)
     except RuntimeError as e:
         ui.erro("erro", str(e))
+        sys.exit(1)
+    if not all(r["ok"] for r in resultados):
         sys.exit(1)
 
 
