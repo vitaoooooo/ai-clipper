@@ -13,7 +13,7 @@ O usuario fala portugues (Brasil). Responda em portugues.
 
 ```
 .venv\Scripts\activate            # ambiente virtual (Windows)
-pip install -e .[dev]             # instala o pacote + pytest
+pip install -e .[dev]             # instala o pacote + pytest (tudo: pip install -e .[gpu,ui,dev])
 pytest                            # testes (os de render precisam de ffmpeg no PATH)
 clipador "<link ou arquivo>" --credito "@canal"   # ou: python clipador.py ...
 clipador "<link>" --canal <nome>  # usa o preset [canais.<nome>] do config.toml
@@ -23,6 +23,10 @@ clipador "<link>" --sem-ia        # sem IA (corta pelos picos de audio)
 clipador "<link>" --reprisar-ia   # reusa as respostas salvas da IA (testar sem gastar cota)
 clipador "<link1>" "<link2>"      # varios videos, um depois do outro
 clipador --lista links.txt        # um link por linha (# = comentario)
+clipador-ui                       # interface grafica (extra `ui`); rode no diretorio do config.toml
+clipador-ui --parar               # desliga o servidor da interface (fechar a janela nao para o lote)
+clipador-ui --navegador           # abre no navegador em vez da janela; --sem-janela so sobe o servidor
+python scripts\criar_exe.py       # gera o Clipador.exe (lancador C# compilado com o csc.exe do Windows)
 ```
 
 Dependencias externas: `ffmpeg`/`ffprobe` no PATH e o Claude Code (`claude`) no PATH, logado com a conta do
@@ -109,12 +113,39 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   `tabela_visao`, `resumo` e `uso` (contador de tokens thread-safe, alimentado por `ia.chamar_ia`).
   Use `ui.ok/info/aviso/detalhe` em vez de `print`. As mensagens sao montadas com `Text`, nunca com
   markup do rich, porque titulos com `[...]` virariam tags.
+  **Ouvintes:** `ui.ouvir(f)` recebe cada coisa como evento (dict com `tipo`: `execucao`, `etapa`, `barra`,
+  `tokens`, `msg`, `candidato`, `candidatos`, `video`, `resumo`). E so uma copia: a saida do terminal nao muda
+  (testado em `tests/test_app.py`). Um ouvinte com erro e ignorado. As barras mandam no maximo 5 eventos/s.
+  Mensagem nova no pipeline deve passar pelo `ui` para aparecer tambem na interface.
+- `Clipador.exe` (fora do git): `scripts/Clipador.cs`, compilado por `scripts/criar_exe.py` com o `csc.exe` do
+  .NET Framework, roda `.venv\Scripts\clipador-ui.exe` com `CreateNoWindow` e cwd = raiz do projeto.
+  Procura o projeto ao lado do exe e depois no caminho gravado no build. Nao empacota Python/Whisper.
+- **Armadilha:** o servidor sobe com `python -m` e `cwd` = pasta temporaria (nao a raiz), porque com `-m`
+  a pasta atual entra no `sys.path` e o `clipador.py` da raiz esconde o pacote (o servidor faz `os.chdir`
+  para a `--raiz` sozinho). Os filhos do multiprocessing herdam o `sys.path` do servidor.
+- `app/` (interface grafica, extra `ui`): `clipador-ui` (`lancador.py`) sobe `python -m clipador.app.servidor`
+  como processo **independente** (sem console, log em `%TEMP%\clipador-ui.log`) se ainda nao houver um na
+  porta 8765, e abre a janela (pywebview/WebView2; sem ele, Edge `--app`; por ultimo, o navegador). Fechar
+  a janela nao para nada: abrir de novo reconecta. Desligar: botao "Desligar servidor" ou `clipador-ui --parar`.
+  - `servidor.py`: Starlette so em 127.0.0.1. O estado vai por SSE (`/api/eventos`, uma "foto" inteira a cada
+    mudanca); os MP4 saem por `/midia/<pasta>/<arquivo>` (FileResponse responde Range). A raiz (pasta com o
+    `config.toml` e a `saida/`) e o diretorio onde o `clipador-ui` foi aberto.
+  - `gerente.py`: um video por vez, cada um num **processo filho** (spawn) que roda `pipeline.executar` e manda
+    os eventos do `ui` por uma fila. "Parar" mata a arvore do processo (`taskkill /T`) e cancela a fila;
+    o cache do video continua valendo. O console do filho vai para o devnull.
+  - `estado.py`: fila e progresso de cada video (thread-safe, serializavel). `presets.py`: le/grava
+    `[canais.X]` com **tomlkit**, preservando comentarios; cria o `config.toml` a partir do
+    `config.example.toml` se nao existir; valida antes de gravar. `estimativa.py`: chamadas ao Claude
+    (1 por bloco de ~1h + max(candidatos, cortes) + candidatos_visuais; 0 com reprise ou sem IA).
+    `midia.py`: titulo/duracao (yt-dlp sem baixar, ffprobe no local) e prints para marcar a facecam.
+    `biblioteca.py`: videos em `saida/` e o "postado" manual no `historico.py` (`saida/clipador.db`).
+  - `static/`: HTML/CSS/JS puro, sem build. Textos visiveis **com acentos** (excecao a regra do codigo).
+    Icone "C cortado" (`icone.svg`, `icone.ico` com versao simplificada em 16-32px).
 - `config.py`: dataclass `Config`. Prioridade: padrao < `config.toml [padrao]` < `[canais.X]` < CLI.
   O `config.toml` e lido automaticamente se existir no diretorio atual. Ele fica fora do git; o modelo e o `config.example.toml`.
 - `modelos.py`: `Video` e `Corte` sao dataclasses. Segmentos e palavras continuam `TypedDict` (dict) para
   manter compativel o cache `transcricao.json`. Nao converta para dataclass sem migrar o cache.
-- Modulos que ja existem mas **ainda nao estao ligados ao pipeline**:
-  `publicacao/historico.py` (SQLite).
+- `publicacao/historico.py` (SQLite): usado so pela interface (marcar como postado); a CLI ainda nao grava nele.
 
 ## Convencoes e armadilhas
 
@@ -158,6 +189,9 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   passar o caminho do arquivo. GPU NVIDIA: as DLLs do CUDA vem do extra `gpu`
   (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) e `_registrar_dlls_cuda()` as poe no caminho de busca do Windows.
   Sem elas, cai para a CPU, que e muito mais lenta.
+- Interface: no Git Bash (MSYS), argumentos como `#/fila` ou `D:\...` sao reescritos; teste o `clipador-ui`
+  e scripts de print pelo PowerShell. O "postado" e chaveado pelo caminho do `corte_XX.mp4`: renderizar de
+  novo na mesma pasta mantem a marcacao.
 - Antes de mexer em `ajuste.py`, `legendas.py` ou `layouts.py`, rode `pytest`. Os testes de render
   geram um video sintetico e confirmam 1080x1920 nos tres modos.
 - A postagem no TikTok e **manual** (decisao de 12/11/2026: sem Content Posting API; o `tiktok.py` foi
@@ -178,5 +212,9 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   margem de 40s antes e `falta_contexto`. Ideia: refazer o candidato com janela maior quando `falta_contexto`.
 - **Feito (12/11/2026):** terminal com `rich` (`ui.py`), `--reprisar-ia` e varios videos de uma vez
   (`lote.py`, item 1 da fase 2). Envio automatico ao TikTok descartado: a postagem e manual.
-- **Fase 2 (falta):** ligar o `historico.py`, fila de posts com horarios.
+- **Feito (12/11/2026):** interface grafica local (`clipador-ui`, pasta `app/`): nova execucao com presets
+  editaveis, facecam desenhada sobre o print e estimativa de chamadas; fila com progresso ao vivo (SSE);
+  resultados com player, legenda/hashtags e "marcar como postado" (`historico.py`). O servidor roda em
+  segundo plano; a CLI continua igual.
+- **Fase 2 (falta):** a CLI gravar no `historico.py`, fila de posts com horarios.
 - **Fase 3:** metricas de desempenho dos cortes (anotadas a mao, ja que a postagem e manual).

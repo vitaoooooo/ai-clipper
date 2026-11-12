@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipador</title>
+<link rel="icon" type="image/svg+xml" href="/static/icone.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/icone-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<aside class="lateral">
+  <div class="marca"><img src="/static/icone.svg" alt="" width="28" height="28"><span>CLIPADOR</span></div>
+  <nav class="menu">
+    <a href="#/nova" data-rota="nova"><i></i>Nova execução</a>
+    <a href="#/fila" data-rota="fila"><i></i><span>Fila</span><b id="contador-fila"></b></a>
+    <a href="#/resultados" data-rota="resultados"><i></i>Resultados</a>
+    <a href="#/biblioteca" data-rota="biblioteca"><i></i>Biblioteca</a>
+  </nav>
+  <div class="espaco"></div>
+  <div class="contagem">
+    <div class="rotulo">GTA 6 sai em</div>
+    <div class="dias" id="dias-gta">—</div>
+    <div class="data">19/11/2026</div>
+  </div>
+  <div class="status-claude" id="status-claude"><span class="ponto"></span><span>conectando…</span></div>
+  <button class="desligar" id="desligar" title="Para o que estiver rodando e desliga o servidor do Clipador">Desligar servidor</button>
+</aside>
+<main id="tela"></main>
+<div id="aviso" class="aviso-flutuante" hidden></div>
+<script src="/static/app.js"></script>
+</body>
+</html>

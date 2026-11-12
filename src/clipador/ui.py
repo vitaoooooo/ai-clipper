@@ -26,6 +26,36 @@ TEMA = Theme({"rosa": ROSA, "ciano": CIANO, "ok": "bold green", "aviso": "yellow
 console = Console(theme=TEMA, highlight=False)
 
 
+# ---------------------------------------------------------------- ouvintes (interface grafica)
+# A interface grafica (clipador.app) se inscreve aqui para receber o progresso como eventos (dicts).
+# Os eventos sao so uma copia do que vai para o terminal: nada do que o rich imprime muda.
+
+_ouvintes: list = []
+
+
+def ouvir(funcao):
+    """Inscreve `funcao(evento: dict)`. Devolve a propria funcao (para parar_de_ouvir)."""
+    _ouvintes.append(funcao)
+    return funcao
+
+
+def parar_de_ouvir(funcao):
+    if funcao in _ouvintes:
+        _ouvintes.remove(funcao)
+
+
+def evento(tipo: str, **dados):
+    """Manda {"tipo": ..., **dados} para cada ouvinte. Um ouvinte com erro nunca derruba o pipeline."""
+    if not _ouvintes:
+        return
+    ev = {"tipo": tipo, **dados}
+    for funcao in list(_ouvintes):
+        try:
+            funcao(ev)
+        except Exception:
+            pass
+
+
 # ---------------------------------------------------------------- tokens do Claude (tempo real)
 
 class UsoClaude:
@@ -42,6 +72,8 @@ class UsoClaude:
     def comecou(self):
         with self._trava:
             self.rodando += 1
+            dados = self.como_dict()
+        evento("tokens", **dados)
 
     def terminou(self, entrada: int = 0, saida: int = 0, custo: float = 0.0, ok: bool = True):
         with self._trava:
@@ -51,6 +83,12 @@ class UsoClaude:
             self.entrada += entrada
             self.saida += saida
             self.custo += custo
+            dados = self.como_dict()
+        evento("tokens", **dados)
+
+    def como_dict(self) -> dict:
+        return {"entrada": self.entrada, "saida": self.saida, "chamadas": self.chamadas,
+                "falhas": self.falhas, "rodando": self.rodando, "custo": self.custo}
 
     def texto(self) -> Text:
         t = Text.assemble(("Claude ", "fraco"), ("entrada ", "fraco"), (_k(self.entrada), "tok"),
@@ -79,22 +117,27 @@ def _dur(seg: float) -> str:
 # ---------------------------------------------------------------- mensagens soltas
 
 def info(msg: str, destaque: str = ""):
+    evento("msg", nivel="info", texto=f"{msg} {destaque}".strip())
     console.print(Text.assemble("  ", (msg, ""), (f" {destaque}" if destaque else "", "bold")), soft_wrap=True)
 
 
 def ok(msg: str):
+    evento("msg", nivel="ok", texto=msg)
     console.print(Text.assemble(("  ✓ ", "ok"), msg), soft_wrap=True)
 
 
 def detalhe(msg: str):
+    evento("msg", nivel="detalhe", texto=msg)
     console.print(Text("    " + msg, style="fraco"), soft_wrap=True)
 
 
 def aviso(msg: str):
+    evento("msg", nivel="aviso", texto=msg)
     console.print(Text.assemble(("  ! ", "aviso"), (msg, "aviso")), soft_wrap=True)
 
 
 def erro(titulo: str, msg: str):
+    evento("msg", nivel="erro", texto=f"{titulo}: {msg}")
     console.print()
     console.print(Panel(Text(msg), title=Text(titulo, style="erro"), border_style="red",
                         box=box.ROUNDED, padding=(1, 2)))
@@ -219,6 +262,7 @@ def iniciar(total_etapas: int):
     _Execucao.inicio = time.monotonic()
     _Execucao.tempos = []
     uso.zerar()
+    evento("execucao", total=total_etapas)
 
 
 @contextmanager
@@ -228,10 +272,18 @@ def etapa(titulo: str):
     console.print()
     console.rule(Text.assemble((f" {_Execucao.atual}/{_Execucao.total} ", f"bold black on {ROSA}"),
                                (f" {titulo} ", "bold")), align="left", style="grey35")
+    n = _Execucao.atual
+    evento("etapa", n=n, total=_Execucao.total, titulo=titulo, status="rodando")
     t0 = time.monotonic()
-    yield
+    try:
+        yield
+    except BaseException:
+        evento("etapa", n=n, total=_Execucao.total, titulo=titulo, status="erro",
+               tempo=time.monotonic() - t0)
+        raise
     dt = time.monotonic() - t0
     _Execucao.tempos.append((titulo, dt))
+    evento("etapa", n=n, total=_Execucao.total, titulo=titulo, status="ok", tempo=dt)
     console.print(Text(f"  {titulo} em {_dur(dt)}", style="fraco"))
 
 
@@ -263,17 +315,56 @@ class _ColunaBytes(ProgressColumn):
 
 
 class Barra:
-    def __init__(self, progresso: Progress, tarefa):
+    _proximo_id = 0
+    INTERVALO_EVENTO = 0.2   # segundos entre dois eventos da mesma barra (o ffmpeg avisa muitas vezes)
+
+    def __init__(self, progresso: Progress, tarefa, descricao: str = "", total: float = 0,
+                 unidade: str = "itens"):
         self._p, self._t = progresso, tarefa
+        Barra._proximo_id += 1
+        self.id = Barra._proximo_id
+        self.descricao, self.total, self.unidade = descricao.strip(), total, unidade
+        self.feito = 0.0
+        self._trava = threading.Lock()
+        self._ultimo_evento = 0.0
+        self._emitir(forcar=True)
+
+    def _emitir(self, forcar: bool = False, ativa: bool = True):
+        if not _ouvintes:
+            return
+        agora = time.monotonic()
+        with self._trava:
+            if not forcar and agora - self._ultimo_evento < self.INTERVALO_EVENTO:
+                return
+            self._ultimo_evento = agora
+            dados = {"id": self.id, "descricao": self.descricao, "feito": self.feito,
+                     "total": self.total, "unidade": self.unidade, "ativa": ativa}
+        evento("barra", **dados)
 
     def avancar(self, n: float = 1, descricao: str | None = None):
         self._p.update(self._t, advance=n, **({"description": descricao} if descricao else {}))
+        with self._trava:
+            self.feito += n
+            if descricao:
+                self.descricao = descricao.strip()
+            fim = self.feito >= self.total
+        self._emitir(forcar=fim)
 
     def ate(self, valor: float, total: float | None = None, descricao: str | None = None):
         extra = {"description": descricao} if descricao else {}
         if total is not None:
             extra["total"] = total
         self._p.update(self._t, completed=valor, **extra)
+        with self._trava:
+            self.feito = valor
+            if total is not None:
+                self.total = total
+            if descricao:
+                self.descricao = descricao.strip()
+        self._emitir()
+
+    def fechar(self):
+        self._emitir(forcar=True, ativa=False)
 
 
 @contextmanager
@@ -292,7 +383,11 @@ def barra(descricao: str, total: float, unidade: str = "itens", claude: bool = F
     if claude:
         colunas.append(_ColunaClaude())
     with Progress(*colunas, console=console, transient=True, refresh_per_second=10) as p:
-        yield Barra(p, p.add_task(f"  {descricao}", total=total))
+        b = Barra(p, p.add_task(f"  {descricao}", total=total), descricao, total, unidade)
+        try:
+            yield b
+        finally:
+            b.fechar()
 
 
 # ---------------------------------------------------------------- tabelas
@@ -304,6 +399,11 @@ def tabela_visao(linhas: list):
     tab.add_column("nota", justify="right", no_wrap=True)
     tab.add_column("limites corrigidos", style="ciano", no_wrap=True)
     tab.add_column("", overflow="fold")
+    evento("candidatos", linhas=[
+        {"inicio_antes": antes.inicio, "fim_antes": antes.fim, "nota_antes": antes.nota,
+         "inicio": depois.inicio, "fim": depois.fim, "nota": depois.nota, "titulo": depois.titulo or "",
+         "avaliado": avaliado, "falta_contexto": falta}
+        for antes, depois, avaliado, falta in sorted(linhas, key=lambda l: -l[1].nota)])
     for antes, depois, avaliado, falta in sorted(linhas, key=lambda l: -l[1].nota):
         nota = Text.assemble((f"{antes.nota:g} → ", "fraco"), (f"{depois.nota:g}", f"bold {_cor_nota(depois.nota)}"))
         mudou = (depois.inicio, depois.fim) != (antes.inicio, antes.fim)
@@ -321,6 +421,11 @@ def _cor_nota(nota: float) -> str:
 
 
 def resumo(cortes: list, pasta, com_nota: bool = True):
+    evento("resumo", pasta=str(pasta), com_nota=com_nota,
+           tempo_total=time.monotonic() - _Execucao.inicio,
+           tempos=[{"titulo": t, "tempo": dt} for t, dt in _Execucao.tempos], uso=uso.como_dict(),
+           cortes=[{"inicio": c.inicio, "fim": c.fim, "nota": c.nota, "titulo": c.titulo or ""}
+                   for c in cortes])
     console.print()
     tab = Table(box=box.SIMPLE_HEAD, header_style="bold", border_style="grey35", pad_edge=False,
                 title=Text("cortes prontos", style=f"bold {ROSA}"), title_justify="left")

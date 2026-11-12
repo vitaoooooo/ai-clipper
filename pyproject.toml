@@ -18,12 +18,15 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest", "httpx2"]   # httpx2: o TestClient do starlette (testes da interface)
 # Whisper na placa NVIDIA (CUDA 12): DLLs do cuBLAS/cuDNN. Sem isso ele roda na CPU (bem mais lento).
 gpu = ["nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"]
+# Interface grafica (clipador-ui): servidor local + janela (WebView2 do Windows via pywebview).
+ui = ["starlette>=0.39", "uvicorn", "tomlkit", "pywebview"]
 
 [project.scripts]
 clipador = "clipador.cli:main"
+clipador-ui = "clipador.app.lancador:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -31,6 +34,8 @@ where = ["src"]
 [tool.setuptools.package-data]
 # fontes do titulo e do credito (licenca OFL, junto dos arquivos)
 "clipador.render" = ["fontes/*.ttf", "fontes/*.txt"]
+# pagina da interface grafica (html/css/js e icones)
+"clipador.app" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

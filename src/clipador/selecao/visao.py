@@ -155,6 +155,26 @@ def _limites_da_ia(c: Corte, dados: dict, ext: tuple[float, float]) -> tuple[flo
     return ini, fim
 
 
+def _avisar_candidato(c: Corte, janela: tuple, fut) -> None:
+    """Evento para a interface grafica: um candidato acabou de ser avaliado (o terminal nao muda)."""
+    if not ui._ouvintes:
+        return
+    try:
+        dados = None if fut.exception() is not None else fut.result()[0]
+    except BaseException:   # cancelado
+        return
+    ev ={"inicio_antes": c.inicio, "fim_antes": c.fim, "nota_antes": c.nota, "avaliado": dados is not None,
+          "inicio": c.inicio, "fim": c.fim, "nota": None, "titulo": c.titulo or "", "falta_contexto": False}
+    if dados is not None:
+        try:
+            ini, fim = _limites_da_ia(c, dados, janela)
+            ev.update(inicio=ini, fim=fim, nota=float(dados["nota"]), titulo=dados.get("titulo") or c.titulo,
+                      falta_contexto=bool(dados.get("falta_contexto")))
+        except (KeyError, TypeError, ValueError):
+            pass
+    ui.evento("candidato", **ev)
+
+
 def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Path,
                        pasta_frames: Path, titulo: str, n: int, modelo: str,
                        salvar_em: Path | None = None, sinais: dict | None = None,
@@ -184,8 +204,8 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
     with ui.barra("Claude olhando a tela", len(candidatos), claude=True) as barra,             ThreadPoolExecutor(PARALELO) as ex:
         futuros = [ex.submit(_avaliar, c, j, f, segs, titulo, modelo, dmin, dmax, sinais)
                    for c, j, f in zip(candidatos, janelas, frames)]
-        for fut in futuros:
-            fut.add_done_callback(lambda _: barra.avancar())
+        for c, j, fut in zip(candidatos, janelas, futuros):
+            fut.add_done_callback(lambda f, c=c, j=j: (barra.avancar(), _avisar_candidato(c, j, f)))
         resultados = []
         for c, fut in zip(candidatos, futuros):
             try:

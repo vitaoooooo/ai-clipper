@@ -61,6 +61,7 @@ def executar(fonte: str, cfg: Config) -> dict:
         video = obter_video(fonte, Path(cfg.saida).resolve())
         video.duracao = duracao(video.caminho)
         ui.ok(f"{video.titulo}  ({fmt(video.duracao)})")
+        ui.evento("video", titulo=video.titulo, duracao=video.duracao, pasta=str(video.pasta))
         credito = resolver_credito(cfg.credito, cfg.plataforma, fonte, video)
         if credito is not None:
             ui.ok(f"credito: {credito.texto}")

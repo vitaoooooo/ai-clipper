@@ -1,7 +1,7 @@
-"""Historico em SQLite (FASE 2 - ainda nao ligado ao pipeline).
+"""Historico em SQLite: videos processados, cortes gerados e quais ja foram postados.
 
-Guarda quais videos ja foram processados, quais cortes foram gerados e quais ja foram
-postados, para nao repetir trabalho nem postar o mesmo corte duas vezes.
+Usado pela interface grafica (clipador.app): ela registra os cortes de cada video e o usuario marca
+a mao o que ja postou (a postagem no TikTok e manual). A CLI ainda nao grava aqui.
 """
 import sqlite3
 from datetime import datetime
@@ -62,6 +62,24 @@ class Historico:
         with self.db:
             self.db.execute("UPDATE cortes SET postado_em = ?, link_post = ? WHERE arquivo = ?",
                             (_agora(), link, str(arquivo)))
+
+    def desmarcar_postado(self, arquivo: Path) -> None:
+        with self.db:
+            self.db.execute("UPDATE cortes SET postado_em = NULL, link_post = NULL WHERE arquivo = ?",
+                            (str(arquivo),))
+
+    def postados(self, arquivos: list) -> dict[str, str]:
+        """{arquivo: postado_em} dos arquivos ja marcados como postados."""
+        nomes = [str(a) for a in arquivos]
+        if not nomes:
+            return {}
+        marcas = ",".join("?" * len(nomes))
+        linhas = self.db.execute(f"SELECT arquivo, postado_em FROM cortes WHERE postado_em IS NOT NULL "
+                                 f"AND arquivo IN ({marcas})", nomes).fetchall()
+        return {l["arquivo"]: l["postado_em"] for l in linhas}
+
+    def fonte_da_pasta(self, pasta: Path) -> sqlite3.Row | None:
+        return self.db.execute("SELECT * FROM fontes WHERE pasta = ?", (str(pasta),)).fetchone()
 
     def pendentes(self) -> list[sqlite3.Row]:
         """Cortes gerados e ainda nao postados, melhores notas primeiro."""

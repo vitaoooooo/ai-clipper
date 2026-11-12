@@ -61,6 +61,26 @@ clipador "<link>" --sem-ia               # sem IA: corta nos picos de áudio
 | `--reprisar-ia` | reusa as respostas da última execução, sem chamar o Claude (para testar) |
 | `--whisper small` / `--idioma en` | modelo e idioma da transcrição |
 
+### 🖥️ Interface gráfica
+
+```bash
+pip install -e .[ui]      # já incluído no requirements.txt
+clipador-ui               # abre a janela (rode na pasta do config.toml)
+clipador-ui --parar       # desliga o servidor
+clipador-ui --navegador   # abre no navegador em vez da janela
+python scripts\criar_exe.py  # gera o Clipador.exe (atalho com ícone, sem janela de terminal)
+```
+
+O `Clipador.exe` é só um lançador de 35 KB: ele abre o `clipador-ui` do `.venv` deste projeto, então
+precisa do projeto instalado na máquina. Pode copiar o exe para a área de trabalho ou fixar na barra de
+tarefas. Ele fica fora do git; gere de novo em cada PC.
+
+Três telas: **nova execução** (links ou arquivos, presets do `config.toml` editáveis, facecam desenhada
+sobre um print do vídeo, prévia 9:16 e estimativa de chamadas ao Claude), **processando** (etapas,
+barras, tokens e candidatos ao vivo) e **resultados** (player, legenda e hashtags para copiar,
+"marcar como postado"). O servidor roda em segundo plano: fechar a janela não para o lote, e abrir de
+novo reconecta. A postagem continua manual.
+
 O resultado fica em `saida/<video>/cortes/`: os `corte_XX.mp4` e o `posts.txt` com a legenda,
 as hashtags e o motivo de cada escolha.
 
@@ -76,7 +96,8 @@ pytest
 - [x] Cortes com IA em duas passadas, legendas e layouts
 - [x] Sinais de áudio, movimento na tela e chat
 - [x] Vários vídeos de uma vez (`--lista`)
-- [ ] Histórico e fila de posts com horários
+- [x] Interface gráfica local com histórico de postados
+- [ ] Fila de posts com horários
 - [ ] Métricas de desempenho dos cortes
 
 > Use só vídeos que você tem autorização para cortar e guarde a autorização do criador.

@@ -1,5 +1,6 @@
 # Instala o clipador (e as dependencias do pyproject.toml) em modo editavel,
-# com as bibliotecas CUDA para o Whisper rodar na placa NVIDIA (~1 GB).
+# com as bibliotecas CUDA para o Whisper rodar na placa NVIDIA (~1 GB)
+# e a interface grafica (clipador-ui).
 # Sem placa NVIDIA: pip install -e .
-# Para rodar os testes tambem: pip install -e .[gpu,dev]
--e .[gpu]
+# Para rodar os testes tambem: pip install -e .[gpu,ui,dev]
+-e .[gpu,ui]
