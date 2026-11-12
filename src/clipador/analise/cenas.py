@@ -16,6 +16,7 @@ from pathlib import Path
 
 LARG, ALT = 64, 36
 BRILHO_TELA_PRETA = 16   # media de luminancia (0-255) abaixo disso = tela preta/loading
+MOVIMENTO_MINIMO = 0.5   # movimento medio por segundo abaixo disso = tela praticamente parada
 
 
 def atividade_visual(video: Path, cache: Path | None = None, so_keyframes: bool = True) -> dict:
@@ -70,7 +71,8 @@ def picos_visuais(ativ: dict, quantidade: int = 20, janela: int = 10, distancia_
         mov[1:] = np.where(brilho[:-1] < BRILHO_TELA_PRETA, 0, mov[1:])
 
     soma = np.convolve(mov, np.ones(janela), mode="valid")   # soma[i] = segundos i..i+janela-1
-    base = max(float(np.median(soma)), 1e-3)
+    # piso de 0.5 por segundo: em video quase parado a mediana ~0 faria ruido virar "pico de 1000x"
+    base = max(float(np.median(soma)), MOVIMENTO_MINIMO * janela)
 
     picos, ocupados = [], []
     for seg in np.argsort(soma)[::-1]:

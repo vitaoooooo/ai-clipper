@@ -17,6 +17,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest"]
+# Whisper na placa NVIDIA (CUDA 12): DLLs do cuBLAS/cuDNN. Sem isso ele roda na CPU (bem mais lento).
+gpu = ["nvidia-cublas-cu12", "nvidia-cudnn-cu12>=9,<10"]
 
 [project.scripts]
 clipador = "clipador.cli:main"

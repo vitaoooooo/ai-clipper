@@ -12,6 +12,8 @@ com os momentos escolhidos por IA, legenda animada e credito do criador.
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
+   Isso inclui as bibliotecas CUDA (~1 GB) para o Whisper usar a placa NVIDIA. Sem placa NVIDIA,
+   use `pip install -e .` no lugar.
 4. Claude Code (a IA usa a cota do seu plano do claude.ai, sem pagar API):
    - instale pelo site claude.com/claude-code e rode `claude` uma vez para logar com a conta do claude.ai
    - nao precisa de `ANTHROPIC_API_KEY`; se ela existir, o clipador ignora

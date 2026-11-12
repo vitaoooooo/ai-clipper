@@ -103,6 +103,11 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   gravados sempre em UTF-8.
 - 2a passada: se TODOS os candidatos falharem, `escolher_com_visao` levanta `RuntimeError` (nada e
   renderizado); se so alguns falharem, imprime um aviso e eles ficam com nota <= 5.
+- Whisper: o audio e decodificado pelo ffmpeg (`transcricao.carregar_audio`) e passado como array ao
+  faster-whisper, porque o PyAV 19+ quebrou a decodificacao interna dele (`metadata_errors`). Nao volte a
+  passar o caminho do arquivo. GPU (RTX 2060 do usuario): as DLLs do CUDA vem do extra `gpu`
+  (`nvidia-cublas-cu12`, `nvidia-cudnn-cu12`) e `_registrar_dlls_cuda()` as poe no caminho de busca do Windows.
+  Sem elas, cai para a CPU, que e muito mais lenta.
 - Antes de mexer em `ajuste.py`, `legendas.py` ou `layouts.py`, rode `pytest`. Os testes de render
   geram um video sintetico e confirmam 1080x1920 nos tres modos.
 - Nao automatize postagem no TikTok via navegador (risco de banir a conta). O plano e usar a Content Posting API oficial, enviando como rascunho.

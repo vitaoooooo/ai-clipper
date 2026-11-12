@@ -30,6 +30,16 @@ def test_video_parado_nao_tem_pico():
     assert picos_visuais({"movimento": [1.0] * 300, "brilho": [100.0] * 300}) == []
 
 
+def test_ruido_em_video_quase_parado_nao_vira_pico():
+    mov = [0.0] * 300
+    mov[50] = 0.02                          # ruido de compressao
+    for s in range(150, 170):
+        mov[s] = 6.0                        # acao de verdade
+    picos = picos_visuais({"movimento": mov, "brilho": [100.0] * 300})
+    assert len(picos) == 1 and 145 <= picos[0]["segundo"] <= 170
+    assert picos[0]["movimento_x_media"] < 50      # numero com sentido, nao 99730x
+
+
 def segs_de(total, passo=6):
     return [{"start": float(t), "end": float(t + passo), "text": "x", "words": []} for t in range(0, total, passo)]
 
