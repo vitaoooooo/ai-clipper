@@ -23,15 +23,18 @@ def duracao(video: Path) -> float:
 
 def renderizar(video: Path, pasta_cortes: Path, nome: str, ini: float, fim: float,
                modo: str, facecam: tuple[float, float, float, float] | None = None,
-               progresso: Callable[[float], None] | None = None) -> Path:
+               progresso: Callable[[float], None] | None = None, capa: str | None = None) -> Path:
     """Gera <pasta_cortes>/<nome>.mp4. Espera <nome>.ass ja criado na mesma pasta.
 
     O ffmpeg roda dentro de pasta_cortes para o caminho da legenda ser so o nome do
     arquivo (caminhos do Windows com ':' e '\\' quebram o filtro subtitles).
     `progresso(segundos)` e chamado enquanto o ffmpeg avanca (para a barra do terminal).
+    `capa` = nome do PNG (na pasta_cortes) com o titulo e o credito, posto por cima do video.
     """
-    filtro = montar_filtro(modo, f"{nome}.ass", facecam)
-    cmd = ["ffmpeg", "-y", "-ss", f"{ini:.2f}", "-i", str(video), "-t", f"{fim - ini:.2f}",
+    filtro = montar_filtro(modo, f"{nome}.ass", facecam, capa=capa is not None)
+    # a capa entra logo depois do video: se viesse depois do -t, o -t valeria para ela
+    entrada_capa = ["-i", capa] if capa else []
+    cmd = ["ffmpeg", "-y", "-ss", f"{ini:.2f}", "-i", str(video), *entrada_capa, "-t", f"{fim - ini:.2f}",
            "-filter_complex", filtro, "-map", "[v]", "-map", "0:a?",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", f"{nome}.mp4"]

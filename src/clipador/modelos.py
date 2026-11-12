@@ -29,6 +29,15 @@ class Video:
     pasta: Path        # pasta de trabalho (saida/<slug>/)
     titulo: str
     duracao: float = 0.0
+    plataforma: str | None = None   # "twitch" | "youtube" (do link); None em arquivo local
+    usuario: str | None = None      # canal de quem fez o video, dos dados do yt-dlp
+
+
+@dataclass
+class Credito:
+    plataforma: str | None   # "twitch" | "youtube" | None (sem icone)
+    usuario: str             # sem o @
+    texto: str               # o que aparece no video e no post: "twitch.tv/mount"
 
 
 @dataclass

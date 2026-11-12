@@ -19,6 +19,8 @@ vídeo ──► transcrição (Whisper) ──► sinais (áudio, movimento, ch
   contexto e termina depois do desfecho.
 - **Ação sem fala também vira corte:** os picos de movimento na tela entram como candidatos.
 - **Cortes que não interrompem frases:** os limites se encaixam no fim das falas.
+- **Título e crédito prontos para o feed:** caixa branca com a palavra-chave em destaque e emoji colorido,
+  e o crédito com o ícone da Twitch ou do YouTube (`twitch.tv/criador`) puxado do próprio link.
 - **3 layouts:** `blur` (vídeo inteiro com fundo desfocado), `crop` (tela cheia) e `facecam`
   (câmera em cima, gameplay embaixo).
 - **Sem custo de API:** a IA roda pelo [Claude Code](https://claude.com/claude-code) usando a cota do
@@ -50,6 +52,8 @@ clipador "<link>" --sem-ia               # sem IA: corta nos picos de áudio
 | `--cortes N` | quantos cortes gerar (padrão 5) |
 | `--min` / `--max` | duração dos cortes em segundos (padrão 20 a 60) |
 | `--modo blur\|crop\|facecam` | layout vertical (`--facecam x,y,w,h` em frações do vídeo) |
+| `--credito @usuario` | crédito no topo do vídeo e no post; em link da Twitch/YouTube é automático |
+| `--plataforma twitch\|youtube` | ícone do crédito (só precisa em arquivo local) |
 | `--lista links.txt` | processa vários vídeos; se um falhar, os outros continuam |
 | `--canal nome` | usa um preset do `config.toml` (veja `config.example.toml`) |
 | `--chat` | usa os picos do chat da live como sinal (opcional) |

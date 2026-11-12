@@ -14,6 +14,7 @@ CONFIG_PADRAO = Path("config.toml")
 @dataclass
 class Config:
     credito: str = ""
+    plataforma: str = ""          # twitch | youtube; vazio = descobre pelo link
     cortes: int = 5
     dmin: int = 20
     dmax: int = 60
@@ -40,6 +41,8 @@ class Config:
             raise ValueError("candidatos precisa ser pelo menos 1")
         if self.candidatos_visuais < 0:
             raise ValueError("candidatos_visuais nao pode ser negativo")
+        if self.plataforma not in ("", "twitch", "youtube"):
+            raise ValueError(f"plataforma '{self.plataforma}' invalida, use: twitch ou youtube")
         if self.chat_arquivo and not Path(self.chat_arquivo).exists():
             raise ValueError(f"arquivo de chat nao encontrado: {self.chat_arquivo}")
         if self.dmin < 1 or self.dmax < self.dmin:

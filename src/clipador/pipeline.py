@@ -8,7 +8,9 @@ from clipador.analise.chat import obter_tempos_chat, picos_de_chat
 from clipador.analise.transcricao import transcrever
 from clipador.config import Config
 from clipador.fontes import obter_video
+from clipador.publicacao.credito import resolver as resolver_credito
 from clipador.publicacao.posts import montar_post, salvar_posts
+from clipador.render.capa import gerar_capa
 from clipador.render.ffmpeg import checar_ffmpeg, duracao, renderizar
 from clipador.render.legendas import gerar_ass
 from clipador.selecao.ajuste import ajustar_cortes
@@ -59,6 +61,11 @@ def executar(fonte: str, cfg: Config) -> dict:
         video = obter_video(fonte, Path(cfg.saida).resolve())
         video.duracao = duracao(video.caminho)
         ui.ok(f"{video.titulo}  ({fmt(video.duracao)})")
+        credito = resolver_credito(cfg.credito, cfg.plataforma, fonte, video)
+        if credito is not None:
+            ui.ok(f"credito: {credito.texto}")
+        else:
+            ui.aviso("sem credito: passe --credito @usuario")
     ia.reprise = None
     if cfg.reprisar_ia and not cfg.sem_ia:
         ia.reprise = Reprise(video.pasta, com_visao)
@@ -125,15 +132,20 @@ def executar(fonte: str, cfg: Config) -> dict:
                 nome = f"corte_{i:02d}"
                 barra.ate(feito, descricao=f"  {nome}/{len(cortes):02d}")
                 ass = pasta_cortes / f"{nome}.ass"
-                gerar_ass(ass, segs, c.inicio, c.fim, c.titulo, cfg.credito)
+                capa = pasta_cortes / f"{nome}_capa.png"
+                gerar_ass(ass, segs, c.inicio, c.fim, "", "")   # titulo e credito vao na capa (PNG)
+                gerar_capa(capa, c.titulo, credito)
                 try:
                     renderizar(video.caminho, pasta_cortes, nome, c.inicio, c.fim, cfg.modo, cfg.facecam,
-                               progresso=lambda t, base=feito, d=c.duracao: barra.ate(base + min(t, d)))
+                               progresso=lambda t, base=feito, d=c.duracao: barra.ate(base + min(t, d)),
+                               capa=capa.name)
                 finally:
                     ass.unlink(missing_ok=True)
+                    capa.unlink(missing_ok=True)
                 feito += c.duracao
                 barra.ate(feito)
-                posts.append(montar_post(c, f"{nome}.mp4", cfg.credito, cfg.hashtags_extras))
+                posts.append(montar_post(c, f"{nome}.mp4", credito.texto if credito else "",
+                                         cfg.hashtags_extras))
                 ui.ok(f"{nome}.mp4  {fmt(c.inicio)} -> {fmt(c.fim)}  {c.titulo or ''}")
         salvar_posts(pasta_cortes, posts)
         ui.ok("posts.txt e posts.json com legenda, hashtags e credito")

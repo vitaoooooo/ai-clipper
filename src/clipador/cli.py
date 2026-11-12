@@ -16,7 +16,10 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--config", type=Path, help="Arquivo de config (padrao: ./config.toml se existir)")
     p.add_argument("--canal", help="Preset de [canais.<nome>] da config")
     # default=None em tudo: so sobrescreve a config quando o usuario passa a opcao
-    p.add_argument("--credito", default=None, help='Texto de credito no topo, ex: "@canal"')
+    p.add_argument("--credito", default=None,
+                   help='Usuario do criador, ex: "@canal". Sem ele, usa o canal do link (Twitch/YouTube)')
+    p.add_argument("--plataforma", choices=("twitch", "youtube"), default=None,
+                   help="Icone do credito. Padrao: descobre pelo link (arquivo local fica sem icone)")
     p.add_argument("--cortes", type=int, default=None, help="Quantos cortes gerar (padrao 5)")
     p.add_argument("--min", type=int, default=None, dest="dmin", help="Duracao minima em segundos (padrao 20)")
     p.add_argument("--max", type=int, default=None, dest="dmax", help="Duracao maxima em segundos (padrao 60)")

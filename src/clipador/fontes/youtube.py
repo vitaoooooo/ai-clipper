@@ -40,4 +40,22 @@ def obter(url: str, pasta_base: Path) -> Video:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
         ui.ok("download concluido")
-    return Video(caminho=caminho, pasta=pasta, titulo=titulo)
+    return Video(caminho=caminho, pasta=pasta, titulo=titulo, plataforma=_plataforma(info),
+                 usuario=_usuario(info))
+
+
+def _plataforma(info: dict) -> str | None:
+    chave = (info.get("extractor_key") or "").lower()
+    if chave.startswith("twitch"):
+        return "twitch"
+    if chave.startswith("youtube"):
+        return "youtube"
+    return None
+
+
+def _usuario(info: dict) -> str | None:
+    """Canal de quem publicou: o @handle no YouTube, o login na Twitch."""
+    u = info.get("uploader_id") or info.get("channel_id") or info.get("uploader")
+    if not u or (u.startswith("UC") and len(u) == 24):   # id interno do YouTube nao serve de credito
+        u = info.get("uploader")
+    return u.lstrip("@") if u else None

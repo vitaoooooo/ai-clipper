@@ -13,6 +13,7 @@ dependencies = [
     "faster-whisper",
     "numpy",
     "rich",
+    "pillow",
     "tomli; python_version < '3.11'",
 ]
 
@@ -26,6 +27,10 @@ clipador = "clipador.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# fontes do titulo e do credito (licenca OFL, junto dos arquivos)
+"clipador.render" = ["fontes/*.ttf", "fontes/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

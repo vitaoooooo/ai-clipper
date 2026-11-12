@@ -21,7 +21,8 @@ hashtags_extras = ["#gta6"]
 
 # Um preset por streamer/canal que voce clipa.
 [canais.exemplo]
-credito = "@nomedocriador"
+credito = "@nomedocriador"   # opcional em link da Twitch/YouTube: sem ele, usa o canal do video
+plataforma = "twitch"        # icone do credito: twitch | youtube. So precisa em arquivo local
 modo = "facecam"
 # Regiao da facecam no video original, em fracao (0 a 1): x, y, largura, altura.
 # Ex.: facecam no canto superior esquerdo ocupando 25% da largura e 30% da altura.

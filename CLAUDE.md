@@ -74,7 +74,22 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
    frase** antes de `dmax`; se nao houver, ate a ultima palavra com pontuacao e, por ultimo, ate o fim de
    qualquer palavra. Nunca corta no meio da fala, se houver alternativa. Cortes de mais de 1 min para o
    Creator Rewards: `--min 61 --max 90` (preset `[canais.rewards]` no exemplo); o padrao continua 20-60.
-6. `render/`: `legendas.py` gera o `.ass`, `layouts.py` monta o filtro (blur | crop | facecam), `ffmpeg.py` renderiza
+6. `render/`: `legendas.py` gera o `.ass` (so a legenda falada), `capa.py` gera o PNG transparente com o
+   titulo e o credito, `layouts.py` monta o filtro (blur | crop | facecam, e o `overlay` da capa por cima),
+   `ffmpeg.py` renderiza (a capa e a 2a entrada, `-i` logo depois do video e ANTES do `-t`).
+   - Titulo no **estilo A** (escolha do usuario, mockup no Paper): caixa branca arredondada, Montserrat
+     ExtraBold preta, a ultima palavra com letras em rosa `#FE2C55`, o video inteiro. Credito numa pilula
+     escura com o icone da plataforma (desenhado com poligonos) e Inter Bold: `twitch.tv/mount`.
+   - E PNG (Pillow) e nao `.ass` porque o libass nao faz canto arredondado nem emoji colorido. O emoji usa a
+     fonte colorida do sistema (`seguiemj.ttf` no Windows); sem ela, o emoji e tirado do titulo.
+     Desenha em 2x e reduz (antialias). As fontes ficam em `render/fontes/` (OFL, no `package-data`).
+   - Previa sem rodar o pipeline: `python -m clipador.render.capa "Titulo" twitch mount saida.png`
+     (rodando fora da raiz do projeto, senao o `clipador.py` esconde o pacote).
+   - Credito (`publicacao/credito.py`): plataforma = `--plataforma` > link; usuario = `--credito` > canal
+     do link (`uploader_id` do yt-dlp, guardado em `Video.usuario`). Arquivo local sem `--plataforma` fica
+     sem icone. Credito com espaco vira texto livre. O mesmo texto vai para o `posts.txt`.
+     Nao ha busca do @ na Twitch/YouTube para arquivo local: checar a Twitch exigiria o client-id
+     interno do site (bloqueado pelo modo automatico do Claude Code e sem API oficial sem login).
 7. `publicacao/posts.py`: grava `cortes/posts.json` e `cortes/posts.txt`
 
 ## Estrutura
