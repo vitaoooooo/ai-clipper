@@ -23,12 +23,16 @@ class Config:
     idioma: str = "pt"
     modelo: str = "claude-sonnet-5-5"
     sem_ia: bool = False
+    visao: bool = True       # 2a passada: IA ve os prints dos candidatos
+    candidatos: int = 12     # quantos a 1a passada (so transcricao) pre-seleciona
     saida: str = "saida"
     hashtags_extras: list[str] = field(default_factory=list)
 
     def validar(self):
         if self.cortes < 1:
             raise ValueError("cortes precisa ser pelo menos 1")
+        if self.candidatos < 1:
+            raise ValueError("candidatos precisa ser pelo menos 1")
         if self.dmin < 1 or self.dmax < self.dmin:
             raise ValueError(f"duracoes invalidas: min={self.dmin} max={self.dmax}")
         if self.modo not in MODOS:

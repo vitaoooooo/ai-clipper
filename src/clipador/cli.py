@@ -1,5 +1,6 @@
 """Linha de comando. As opcoes que nao forem passadas vem da config (ou do padrao)."""
 import argparse
+import sys
 from pathlib import Path
 
 from clipador import config, pipeline
@@ -24,14 +25,29 @@ def criar_parser() -> argparse.ArgumentParser:
                    help="Regiao da facecam em fracao do video: x,y,largura,altura (ex: 0,0,0.25,0.3)")
     p.add_argument("--whisper", default=None, help="Modelo do Whisper: small, medium (padrao), large-v3")
     p.add_argument("--idioma", default=None, help="Idioma do video (pt, en...). Vazio = detectar")
-    p.add_argument("--modelo", default=None, help="Modelo do Claude (padrao claude-sonnet-5-5)")
+    p.add_argument("--modelo", default=None, help="Modelo do Claude usado pelo Claude Code (padrao claude-sonnet-5-5)")
     p.add_argument("--sem-ia", action="store_true", default=None,
-                   help="Nao usa a API; corta pelos picos de audio")
+                   help="Nao usa IA; corta pelos picos de audio")
+    p.add_argument("--candidatos", type=int, default=None,
+                   help="Quantos trechos a 1a passada (so transcricao) pre-seleciona para a IA "
+                        "olhar as imagens (padrao 12)")
+    p.add_argument("--sem-visao", action="store_false", default=None, dest="visao",
+                   help="Pula a 2a passada (prints do video); escolhe so pela transcricao")
     p.add_argument("--saida", default=None, help="Pasta onde tudo e salvo (padrao saida)")
     return p
 
 
+def _console_utf8():
+    """O console do Windows (cp1252) quebra no print de emoji que a IA poe nos titulos."""
+    for fluxo in (sys.stdout, sys.stderr):
+        try:
+            fluxo.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):  # fluxo substituido (ex: pytest) ou ja fechado
+            pass
+
+
 def main(argv=None):
+    _console_utf8()
     parser = criar_parser()
     a = parser.parse_args(argv)
     sobrescritas = {k: v for k, v in vars(a).items() if k not in ("fonte", "config", "canal")}

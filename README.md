@@ -12,8 +12,9 @@ com os momentos escolhidos por IA, legenda animada e credito do criador.
    .venv\Scripts\activate
    pip install -r requirements.txt
    ```
-4. Chave da API do Claude (console.anthropic.com, cobrado por uso):
-   - Windows: `setx ANTHROPIC_API_KEY "sua-chave"` e abra um terminal novo
+4. Claude Code (a IA usa a cota do seu plano do claude.ai, sem pagar API):
+   - instale pelo site claude.com/claude-code e rode `claude` uma vez para logar com a conta do claude.ai
+   - nao precisa de `ANTHROPIC_API_KEY`; se ela existir, o clipador ignora
 
 ## Usar
     clipador "https://youtube.com/watch?v=XXXX" --credito "@nomedocriador"
@@ -28,7 +29,9 @@ Opcoes uteis:
                         e dada em fracao do video: x, y, largura, altura
 - `--whisper small`     transcricao mais rapida (padrao medium; large-v3 e mais preciso e mais lento)
 - `--idioma en`         se o video for em ingles
-- `--sem-ia`            nao usa a API: corta nos maiores picos de audio (gratis, menos inteligente)
+- `--candidatos 15`    quantos trechos a 1a passada (so transcricao) pre-seleciona (padrao 12)
+- `--sem-visao`        pula a 2a passada, em que a IA olha os prints (1 por segundo) dos candidatos
+- `--sem-ia`            nao usa IA: corta nos maiores picos de audio (nao gasta cota, menos inteligente)
 - Tambem aceita arquivo: `clipador video.mp4 --credito "@canal"`
 
 ## Config por canal
@@ -43,7 +46,11 @@ Fica em `saida/<titulo-do-video>/`:
 - `cortes/corte_01.mp4`, `corte_02.mp4`... prontos pra postar
 - `cortes/posts.txt` (e `posts.json`) com legenda, hashtags e o motivo de cada escolha
 - `transcricao.json` e `picos_audio.json`: cache, rodar de novo no mesmo video e bem mais rapido
-- `resposta_ia.json`: o que a IA respondeu e quantos tokens gastou
+- `resposta_ia.json`: o que a IA respondeu na 1a passada (so transcricao) e quantos tokens gastou.
+  Lives longas sao divididas em blocos de ~1h; se algum bloco falhar (ex: limite do plano), rode o
+  mesmo comando de novo e so os blocos que faltaram serao refeitos (ficam em `ia_blocos/` ate terminar)
+- `resposta_visao.json`: nota de cada candidato na 2a passada (com imagem) e tokens gastos
+- `frames/`: prints dos candidatos (cache; pode apagar)
 
 ## Estrutura do codigo
 ```
@@ -51,7 +58,7 @@ src/clipador/
   cli.py, config.py, pipeline.py, modelos.py, util.py
   fontes/      local, youtube (yt-dlp), twitch
   analise/     transcricao (whisper), audio (picos), chat*, cenas*
-  selecao/     ia (Claude), heuristica (sem IA), ajuste (encaixe em frases)
+  selecao/     ia (Claude via Claude Code), heuristica (sem IA), ajuste (encaixe em frases)
   render/      layouts (blur/crop/facecam), legendas (ASS), ffmpeg
   publicacao/  posts, historico*, tiktok*
 ```

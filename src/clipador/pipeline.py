@@ -11,6 +11,7 @@ from clipador.render.legendas import gerar_ass
 from clipador.selecao.ajuste import ajustar_cortes
 from clipador.selecao.heuristica import escolher_sem_ia
 from clipador.selecao.ia import escolher_com_ia
+from clipador.selecao.visao import escolher_com_visao
 from clipador.util import fmt
 
 
@@ -29,10 +30,22 @@ def executar(fonte: str, cfg: Config) -> list[dict]:
     # 4. escolha
     if cfg.sem_ia:
         brutos = escolher_sem_ia(picos, cfg.cortes, cfg.dmin, cfg.dmax)
-    else:
+        cortes = ajustar_cortes(brutos, segs, video.duracao, cfg.cortes, cfg.dmin, cfg.dmax)
+    elif not cfg.visao:
         brutos = escolher_com_ia(segs, picos, video.titulo, cfg.cortes, cfg.dmin, cfg.dmax,
                                  cfg.modelo, salvar_em=video.pasta / "resposta_ia.json")
-    cortes = ajustar_cortes(brutos, segs, video.duracao, cfg.cortes, cfg.dmin, cfg.dmax)
+        cortes = ajustar_cortes(brutos, segs, video.duracao, cfg.cortes, cfg.dmin, cfg.dmax)
+    else:
+        # 1a passada: so a fala (Whisper) -> candidatos, ja ajustados em frases e sem sobreposicao
+        n_cand = max(cfg.candidatos, cfg.cortes)
+        brutos = escolher_com_ia(segs, picos, video.titulo, n_cand, cfg.dmin, cfg.dmax,
+                                 cfg.modelo, salvar_em=video.pasta / "resposta_ia.json")
+        candidatos = ajustar_cortes(brutos, segs, video.duracao, n_cand, cfg.dmin, cfg.dmax)
+        print(f"{len(candidatos)} candidatos na 1a passada")
+        # 2a passada: prints 1/s + fala de cada candidato -> os N melhores entre eles
+        cortes = escolher_com_visao(candidatos, segs, video.caminho, video.pasta / "frames",
+                                    video.titulo, cfg.cortes, cfg.modelo,
+                                    salvar_em=video.pasta / "resposta_visao.json")
 
     # 5. render
     pasta_cortes = video.pasta / "cortes"

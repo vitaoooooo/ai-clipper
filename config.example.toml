@@ -11,6 +11,8 @@ modo = "blur"        # blur | crop | facecam
 whisper = "medium"   # small | medium | large-v3
 idioma = "pt"
 modelo = "claude-sonnet-5-5"
+candidatos = 12      # 1a passada: trechos pre-selecionados so pela transcricao
+visao = true         # 2a passada: IA ve 1 print por segundo de cada candidato
 saida = "saida"
 hashtags_extras = ["#gta6"]
 
