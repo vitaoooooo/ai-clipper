@@ -46,7 +46,7 @@ def test_escolhe_os_melhores_so_entre_candidatos(tmp_path, monkeypatch):
 
     assert [c.inicio for c in cortes] == [30, 60]          # a nota da imagem decide
     assert cortes[0].titulo == "novo 30"
-    assert vistos == [40, 70, 80]                          # 1 print/s, 40s antes e 20s depois (0 no inicio)
+    assert sorted(vistos) == [40, 70, 80]                  # 1 print/s, 40s antes e 20s depois (0 no inicio)
     assert saida.exists()
 
 

@@ -23,6 +23,7 @@ class Config:
     idioma: str = "pt"
     modelo: str = "claude-sonnet-5-5"
     sem_ia: bool = False
+    reprisar_ia: bool = False    # reusa as respostas salvas da IA (testar sem gastar cota)
     visao: bool = True       # 2a passada: IA ve os prints dos candidatos
     candidatos: int = 12     # quantos a 1a passada (so transcricao) pre-seleciona
     cenas: bool = True       # mede o movimento na tela (local, gratis) e usa como sinal

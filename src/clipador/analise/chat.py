@@ -13,6 +13,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from clipador import ui
+
 
 def obter_tempos_chat(fonte: str, pasta: Path, arquivo: str | Path | None = None) -> list[float]:
     """Segundo (no video) de cada mensagem do chat. Lista vazia se nao der para obter."""
@@ -20,18 +22,18 @@ def obter_tempos_chat(fonte: str, pasta: Path, arquivo: str | Path | None = None
         if arquivo:
             return ler_chat_arquivo(Path(arquivo))
         if Path(fonte).exists():
-            print("  aviso: video local; para usar o chat passe --chat-arquivo <arquivo>")
+            ui.aviso("video local; para usar o chat passe --chat-arquivo <arquivo>")
             return []
         if "twitch.tv" in fonte.lower():
             destino = baixar_chat_twitch(fonte, pasta)
             return ler_chat_twitch(destino) if destino else []
         destino = baixar_chat_youtube(fonte, pasta)
         if destino is None:
-            print("  aviso: esse video nao tem replay de chat (so lives passadas tem)")
+            ui.aviso("esse video nao tem replay de chat (so lives passadas tem)")
             return []
         return ler_chat_youtube(destino)
     except Exception as e:  # chat e opcional: nao derruba o resto
-        print(f"  aviso: nao consegui ler o chat ({str(e)[:120]}); seguindo sem ele")
+        ui.aviso(f"nao consegui ler o chat ({str(e)[:120]}); seguindo sem ele")
         return []
 
 
@@ -52,14 +54,14 @@ def baixar_chat_twitch(url: str, pasta: Path) -> Path | None:
         return destino
     m = re.search(r"twitch\.tv/videos/(\d+)", url)
     if not m:
-        print("  aviso: link da Twitch sem id de VOD (twitch.tv/videos/<id>); seguindo sem chat")
+        ui.aviso("link da Twitch sem id de VOD (twitch.tv/videos/<id>); seguindo sem chat")
         return None
     exe = shutil.which("TwitchDownloaderCLI")
     if exe is None:
-        print("  aviso: TwitchDownloaderCLI nao encontrado no PATH; seguindo sem chat "
+        ui.aviso("TwitchDownloaderCLI nao encontrado no PATH; seguindo sem chat "
               "(ou baixe o chat e passe --chat-arquivo)")
         return None
-    print("Baixando o chat da Twitch...")
+    ui.info("baixando o chat da Twitch...")
     subprocess.run([exe, "chatdownload", "--id", m.group(1), "-o", str(destino)],
                    capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
     return destino if destino.exists() else None
@@ -79,7 +81,7 @@ def baixar_chat_youtube(url: str, pasta: Path) -> Path | None:
         "subtitleslangs": ["live_chat"],
         "outtmpl": str(pasta / "chat.%(ext)s"),
     }
-    print("Baixando o chat do YouTube...")
+    ui.info("baixando o chat do YouTube...")
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
     return destino if destino.exists() else None

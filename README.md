@@ -51,6 +51,7 @@ clipador "<link>" --sem-ia               # sem IA: corta nos picos de áudio
 | `--canal nome` | usa um preset do `config.toml` (veja `config.example.toml`) |
 | `--chat` | usa os picos do chat da live como sinal (opcional) |
 | `--sem-visao` | pula a 2ª passada (gasta menos cota) |
+| `--reprisar-ia` | reusa as respostas da última execução, sem chamar o Claude (para testar) |
 | `--whisper small` / `--idioma en` | modelo e idioma da transcrição |
 
 O resultado fica em `saida/<video>/cortes/`: os `corte_XX.mp4` e o `posts.txt` com a legenda,

@@ -5,8 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from clipador import ui
 from clipador.modelos import Segmento
-from clipador.util import fmt
 
 
 TAXA = 16000  # o Whisper trabalha com audio mono em 16 kHz
@@ -49,8 +49,9 @@ def _registrar_dlls_cuda() -> None:
 def transcrever(video: Path, pasta: Path, modelo: str, idioma: str) -> list[Segmento]:
     cache = pasta / "transcricao.json"
     if cache.exists():
-        print("Usando transcricao salva.")
-        return json.loads(cache.read_text(encoding="utf-8"))
+        segs = json.loads(cache.read_text(encoding="utf-8"))
+        ui.ok(f"usando a transcricao salva ({len(segs)} falas)")
+        return segs
 
     _registrar_dlls_cuda()
     # avisos inofensivos do download do modelo (symlinks no Windows, download sem login no Hugging Face)
@@ -58,28 +59,32 @@ def transcrever(video: Path, pasta: Path, modelo: str, idioma: str) -> list[Segm
     os.environ.setdefault("HF_HUB_VERBOSITY", "error")
     from faster_whisper import WhisperModel
 
-    audio = carregar_audio(video)
+    with ui.console.status(ui.Text("  extraindo o audio..."), spinner="dots", spinner_style="rosa"):
+        audio = carregar_audio(video)
+    total = len(audio) / TAXA
 
     def _executar(device, compute):
-        m = WhisperModel(modelo, device=device, compute_type=compute)
+        with ui.console.status(ui.Text(f"  carregando o Whisper {modelo} ({device.upper()})..."),
+                               spinner="dots", spinner_style="rosa"):
+            m = WhisperModel(modelo, device=device, compute_type=compute)
         segs, _ = m.transcribe(audio, language=idioma or None,
                                word_timestamps=True, vad_filter=True)
         saida = []
-        for s in segs:
-            saida.append({
-                "start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip(),
-                "words": [{"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word.strip()}
-                          for w in (s.words or [])],
-            })
-            print(f"\r  transcrito ate {fmt(s.end)}", end="", flush=True)
-        print()
+        with ui.barra(f"transcrevendo ({device.upper()})", total, unidade="tempo") as barra:
+            for s in segs:
+                saida.append({
+                    "start": round(s.start, 2), "end": round(s.end, 2), "text": s.text.strip(),
+                    "words": [{"start": round(w.start, 2), "end": round(w.end, 2), "word": w.word.strip()}
+                              for w in (s.words or [])],
+                })
+                barra.ate(min(s.end, total))
         return saida
 
-    print(f"Transcrevendo com Whisper ({modelo})...")
     try:
         resultado = _executar("cuda", "float16")
     except Exception as e:
-        print(f"  GPU indisponivel ({str(e)[:80]}), usando CPU (mais lento)...")
+        ui.aviso(f"GPU indisponivel ({str(e)[:80]}), usando CPU (mais lento)")
         resultado = _executar("cpu", "int8")
+    ui.ok(f"{len(resultado)} falas transcritas com o Whisper {modelo}")
     cache.write_text(json.dumps(resultado, ensure_ascii=False), encoding="utf-8")
     return resultado

@@ -16,8 +16,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from pathlib import Path
 
+from clipador import ui
 from clipador.analise.frames import amostrar, extrair_frames
 from clipador.modelos import Corte, Segmento
+from clipador.selecao import ia
 from clipador.selecao.ajuste import ajustar_cortes
 from clipador.selecao.ia import chamar_ia
 from clipador.util import fmt
@@ -166,23 +168,35 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
         total = max((c.fim for c in candidatos), default=0.0) + MARGEM_DEPOIS
     janelas = [janela_com_margem(c, total) for c in candidatos]
 
-    print(f"Tirando prints (1/s) dos {len(candidatos)} candidatos "
-          f"(com {MARGEM_ANTES}s antes e {MARGEM_DEPOIS}s depois)...")
-    frames = [extrair_frames(video, a, b, pasta_frames / f"{a:.2f}-{b:.2f}") for a, b in janelas]
+    ui.info(f"{len(candidatos)} candidatos, com {MARGEM_ANTES}s antes e {MARGEM_DEPOIS}s depois de cada um")
+    if ia.reprise is not None:   # --reprisar-ia: as respostas ja estao salvas, ninguem vai olhar os prints
+        frames = [[] for _ in janelas]
+        ui.detalhe("reprise: pulando os prints")
+    else:
+        frames = []
+        with ui.barra("tirando prints (1/s)", len(janelas)) as barra:
+            for a, b in janelas:
+                frames.append(extrair_frames(video, a, b, pasta_frames / f"{a:.2f}-{b:.2f}"))
+                barra.avancar()
+        ui.ok(f"{sum(len(f) for f in frames)} prints prontos")
 
-    print("Pedindo pra IA avaliar os candidatos com imagem + fala e corrigir os limites...")
-    with ThreadPoolExecutor(PARALELO) as ex:
+    erros = []
+    with ui.barra("Claude olhando a tela", len(candidatos), claude=True) as barra,             ThreadPoolExecutor(PARALELO) as ex:
         futuros = [ex.submit(_avaliar, c, j, f, segs, titulo, modelo, dmin, dmax, sinais)
                    for c, j, f in zip(candidatos, janelas, frames)]
+        for fut in futuros:
+            fut.add_done_callback(lambda _: barra.avancar())
         resultados = []
         for c, fut in zip(candidatos, futuros):
             try:
                 resultados.append(fut.result())
             except Exception as e:  # um candidato com erro nao derruba os outros
-                print(f"  aviso: falhou avaliar {fmt(c.inicio)}-{fmt(c.fim)}: {e}")
+                erros.append(f"falhou avaliar {fmt(c.inicio)}-{fmt(c.fim)}: {e}")
                 resultados.append((None, None))
+    for e in erros:
+        ui.aviso(e)
 
-    avaliados, registro = [], []
+    avaliados, registro, linhas = [], [], []
     for c, j, f, (dados, uso) in zip(candidatos, janelas, frames, resultados):
         if dados is None:
             # sem a avaliacao visual, fica com a nota da 1a passada, mas atras dos avaliados
@@ -199,9 +213,8 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
         registro.append({"inicio_1a_passada": c.inicio, "fim_1a_passada": c.fim,
                          "inicio": a.inicio, "fim": a.fim, "falta_contexto": falta, "frames": len(f),
                          "nota_1a_passada": c.nota, "uso": uso, "resposta": dados})
-        mudou = "" if (a.inicio, a.fim) == (c.inicio, c.fim) else f"  limites -> {fmt(a.inicio)}-{fmt(a.fim)}"
-        aviso = "  (falta contexto antes da janela)" if falta else ""
-        print(f"  {fmt(c.inicio)}-{fmt(c.fim)}  nota {c.nota:g} -> {a.nota:g}{mudou}{aviso}")
+        linhas.append((c, a, dados is not None, falta))
+    ui.tabela_visao(linhas)
 
     if salvar_em is not None:
         salvar_em.write_text(json.dumps({"modelo": modelo, "candidatos": registro},
@@ -213,8 +226,8 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
             f"A 2a passada falhou em todos os {falhas} candidatos (limite do plano? veja /usage "
             "no claude). Nada foi renderizado. Tente mais tarde ou use --sem-visao.")
     if falhas:
-        print(f"\n  ATENCAO: {falhas} de {len(candidatos)} candidatos nao foram avaliados com imagem; "
-              "eles ficaram com nota <= 5 e so entram se faltar candidato avaliado.\n")
+        ui.aviso(f"ATENCAO: {falhas} de {len(candidatos)} candidatos nao foram avaliados com imagem; "
+                 "eles ficaram com nota <= 5 e so entram se faltar candidato avaliado.")
 
     # novos limites podem ter crescido e se sobreposto: o ajuste resolve (maior nota ganha)
     return ajustar_cortes(avaliados, segs, total, n, dmin, dmax)

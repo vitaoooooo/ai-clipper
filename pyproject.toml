@@ -12,6 +12,7 @@ dependencies = [
     "yt-dlp",
     "faster-whisper",
     "numpy",
+    "rich",
     "tomli; python_version < '3.11'",
 ]
 

@@ -3,7 +3,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from clipador import config, pipeline
+from clipador import __version__, config, pipeline, ui
 from clipador.config import MODOS, parse_facecam
 
 
@@ -28,6 +28,9 @@ def criar_parser() -> argparse.ArgumentParser:
     p.add_argument("--modelo", default=None, help="Modelo do Claude usado pelo Claude Code (padrao claude-sonnet-5-5)")
     p.add_argument("--sem-ia", action="store_true", default=None,
                    help="Nao usa IA; corta pelos picos de audio")
+    p.add_argument("--reprisar-ia", action="store_true", default=None,
+                   help="Nao chama o Claude: reusa as respostas salvas da ultima execucao neste video "
+                        "(resposta_ia.json/resposta_visao.json). Para testar sem gastar cota")
     p.add_argument("--candidatos", type=int, default=None,
                    help="Quantos trechos a 1a passada (so transcricao) pre-seleciona para a IA "
                         "olhar as imagens (padrao 12)")
@@ -66,7 +69,16 @@ def main(argv=None):
         cfg = config.carregar(a.config, a.canal, sobrescritas)
     except (ValueError, OSError) as e:
         parser.error(str(e))
-    pipeline.executar(a.fonte, cfg)
+    ui.banner(a.fonte, cfg, __version__)
+    try:
+        pipeline.executar(a.fonte, cfg)
+    except KeyboardInterrupt:
+        ui.erro("interrompido", "Parado pelo usuario (Ctrl+C). O que ja foi feito ficou em cache: "
+                                "rodar de novo continua de onde parou.")
+        sys.exit(130)
+    except RuntimeError as e:
+        ui.erro("erro", str(e))
+        sys.exit(1)
 
 
 if __name__ == "__main__":

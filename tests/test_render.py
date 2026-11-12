@@ -63,3 +63,16 @@ def test_atividade_visual(video, tmp_path):
     assert animado > 3 * max(parado, 0.1)       # mexe mais na parte animada
     assert mov[6] == max(mov)                   # a troca de cena e o maior salto
     assert cache.exists() and atividade_visual(video, cache=cache) == ativ
+
+
+def test_render_com_progresso_avisa_o_tempo(video, tmp_path):
+    gerar_ass(tmp_path / "c.ass", [], 1, 5, "titulo", "@canal")
+    tempos = []
+    saida = renderizar(video, tmp_path, "c", 1, 5, "blur", progresso=tempos.append)
+    assert dimensoes(saida) == (1080, 1920)
+    assert tempos and 3.5 < max(tempos) < 4.5        # a barra chega ao fim do corte
+
+
+def test_render_com_progresso_erro_do_ffmpeg(tmp_path):
+    with pytest.raises(RuntimeError, match="Falhou"):
+        renderizar(tmp_path / "nao_existe.mp4", tmp_path, "c", 0, 2, "blur", progresso=lambda t: None)

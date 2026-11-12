@@ -13,6 +13,7 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from clipador import ui
 from clipador.modelos import Corte, Pico, Segmento
 from clipador.util import fmt
 
@@ -178,6 +179,10 @@ def _executavel_claude() -> str:
     return exe
 
 
+# --reprisar-ia: quando ligado (pipeline), chamar_ia devolve as respostas salvas em vez de chamar o Claude
+reprise = None
+
+
 def chamar_ia(conteudo: str | list, schema: dict, modelo: str) -> tuple[dict, dict]:
     """Faz uma chamada pelo Claude Code com resposta em JSON (structured output).
 
@@ -186,6 +191,15 @@ def chamar_ia(conteudo: str | list, schema: dict, modelo: str) -> tuple[dict, di
     """
     if isinstance(conteudo, str):
         conteudo = [{"type": "text", "text": conteudo}]
+    if reprise is not None:
+        ui.uso.comecou()
+        try:
+            dados, info = reprise.responder(conteudo, schema)
+        except Exception:
+            ui.uso.terminou(ok=False)
+            raise
+        ui.uso.terminou(info["uso"].get("entrada", 0), info["uso"].get("saida", 0))
+        return dados, info
     mensagem = {"type": "user", "message": {"role": "user", "content": conteudo}}
 
     cmd = [_executavel_claude(), "-p",
@@ -197,6 +211,17 @@ def chamar_ia(conteudo: str | list, schema: dict, modelo: str) -> tuple[dict, di
            "--no-session-persistence",
            *ISOLAMENTO]
     env = {k: v for k, v in os.environ.items() if k not in ENV_DE_API}
+    ui.uso.comecou()   # contador de tokens que aparece ao lado das barras de progresso
+    try:
+        dados, info, custo = _rodar_claude(cmd, mensagem, env, modelo)
+    except Exception:
+        ui.uso.terminou(ok=False)
+        raise
+    ui.uso.terminou(info["uso"]["entrada"], info["uso"]["saida"], custo)
+    return dados, info
+
+
+def _rodar_claude(cmd: list, mensagem: dict, env: dict, modelo: str) -> tuple[dict, dict, float]:
     # cwd fora do projeto: assim o Claude Code nao carrega o CLAUDE.md (gastaria cota a toa)
     try:
         proc = subprocess.run(cmd, input=json.dumps(mensagem) + "\n", capture_output=True,
@@ -236,7 +261,8 @@ def chamar_ia(conteudo: str | list, schema: dict, modelo: str) -> tuple[dict, di
                 + uso.get("cache_read_input_tokens", 0),
                 "saida": uso.get("output_tokens", 0)},
     }
-    return dados, info
+    # quanto custaria pela API (o Claude Code calcula); com o plano sai da cota, nao e cobrado
+    return dados, info, float(resultado.get("total_cost_usd") or 0)
 
 
 # Lives longas sao divididas em blocos: um pedido gigante pode estourar o contexto/timeout,
@@ -269,7 +295,8 @@ def dividir_em_blocos(segs: list[Segmento], bloco: float = BLOCO_SEG,
 def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmin, dmax,
                        modelo, cache: Path | None, picos_chat=None, picos_vis=None):
     if cache is not None and cache.exists():
-        print(f"  bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): usando resposta salva")
+        if qtd > 1:
+            ui.detalhe(f"bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): usando a resposta salva")
         return json.loads(cache.read_text(encoding="utf-8"))
     parte = ""
     if qtd > 1:
@@ -277,8 +304,9 @@ def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmi
                  f"de {fmt(ini)} a {fmt(fim)}. Escolha os trechos so dentro dela.")
     prompt = montar_prompt(segs_bloco, _no_intervalo(picos, ini, fim), titulo, n_bloco, dmin, dmax, parte,
                            _no_intervalo(picos_chat, ini, fim), _no_intervalo(picos_vis, ini, fim))
-    print(f"  bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): pedindo {n_bloco} trechos...")
     dados, info = chamar_ia(prompt, SCHEMA, modelo)
+    if qtd > 1:
+        ui.detalhe(f"bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): {len(dados.get('cortes', []))} trechos")
     registro = {"inicio": ini, "fim": fim, **info, "resposta": dados}
     if cache is not None:
         cache.parent.mkdir(parents=True, exist_ok=True)
@@ -299,8 +327,8 @@ def escolher_com_ia(segs: list[Segmento], picos: list[Pico], titulo: str, n: int
     blocos = dividir_em_blocos(segs)
     qtd = len(blocos)
     total = max(blocos[-1][1], 1.0)
-    print(f"Pedindo pra IA escolher os {n} melhores momentos (pela transcricao"
-          f"{f', em {qtd} blocos de ~1h' if qtd > 1 else ''})...")
+    ui.info(f"a IA le a transcricao e escolhe os {n} melhores momentos"
+            f"{f' (em {qtd} blocos de ~1h)' if qtd > 1 else ''}")
 
     # Cache por bloco so em video com varios blocos: se um falhar, rodar de novo refaz so ele.
     # A pasta e apagada quando todos dao certo, entao uma nova execucao pede escolhas novas.
@@ -317,8 +345,11 @@ def escolher_com_ia(segs: list[Segmento], picos: list[Pico], titulo: str, n: int
         return _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco,
                                   dmin, dmax, modelo, cache, picos_chat, picos_vis)
 
-    with ThreadPoolExecutor(PARALELO_BLOCOS) as ex:
+    rotulo = "Claude lendo a transcricao" if qtd == 1 else "Claude lendo os blocos"
+    with ui.barra(rotulo, qtd, claude=True) as barra, ThreadPoolExecutor(PARALELO_BLOCOS) as ex:
         futuros = [ex.submit(tarefa, i, ini, fim, s) for i, (ini, fim, s) in enumerate(blocos, 1)]
+        for fut in futuros:
+            fut.add_done_callback(lambda _: barra.avancar())
         registros, erros = [], []
         for i, fut in enumerate(futuros, 1):
             try:

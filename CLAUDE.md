@@ -20,6 +20,7 @@ clipador "<link>" --canal <nome>  # usa o preset [canais.<nome>] do config.toml
 clipador "<link>" --sem-visao     # so a 1a passada (escolhe pela transcricao, sem olhar os prints)
 clipador "<link>" --candidatos 15 # quantos trechos a 1a passada pre-seleciona para a 2a (padrao 12)
 clipador "<link>" --sem-ia        # sem IA (corta pelos picos de audio)
+clipador "<link>" --reprisar-ia   # reusa as respostas salvas da IA (testar sem gastar cota)
 ```
 
 Dependencias externas: `ffmpeg`/`ffprobe` no PATH e o Claude Code (`claude`) no PATH, logado com a conta do
@@ -77,6 +78,16 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 ## Estrutura
 
 - `cli.py`: argparse. Toda opcao tem `default=None`, para so sobrescrever a config quando for passada.
+  Mostra o banner e transforma `RuntimeError`/Ctrl+C num painel de erro (sem traceback).
+- `selecao/reprise.py` (`--reprisar-ia`): `ia.reprise` ligado faz o `chamar_ia` devolver as respostas
+  de `resposta_ia.json`/`resposta_visao.json` em vez de chamar o Claude (a 2a passada nem tira prints).
+  1a passada: bloco pela "parte i de N". 2a: candidato pela maior sobreposicao com `inicio/fim_1a_passada`
+  (os limites podem mudar se o `ajuste.py` mudar); candidato sem resposta salva vira falha so dele.
+- `ui.py`: todo o visual do terminal (biblioteca `rich`): banner, `etapa()` (cabecalho `n/total` e tempo),
+  `barra()` (progresso que some no fim; `unidade` itens/tempo/bytes; `claude=True` mostra os tokens),
+  `tabela_visao`, `resumo` e `uso` (contador de tokens thread-safe, alimentado por `ia.chamar_ia`).
+  Use `ui.ok/info/aviso/detalhe` em vez de `print`. As mensagens sao montadas com `Text`, nunca com
+  markup do rich, porque titulos com `[...]` virariam tags.
 - `config.py`: dataclass `Config`. Prioridade: padrao < `config.toml [padrao]` < `[canais.X]` < CLI.
   O `config.toml` e lido automaticamente se existir no diretorio atual. Ele fica fora do git; o modelo e o `config.example.toml`.
 - `modelos.py`: `Video` e `Corte` sao dataclasses. Segmentos e palavras continuam `TypedDict` (dict) para
@@ -112,6 +123,10 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
     vira `RuntimeError`; a saida e esperar ou usar `--sem-visao`/`--sem-ia`.
   - Os testes nunca chamam o Claude de verdade: trocam `subprocess.run`/`shutil.which` em `ia.py`
     (`tests/test_ia_claude_code.py`) ou o `chamar_ia` em `visao.py` (`tests/test_visao.py`) via monkeypatch.
+- Barras de progresso: transcricao (segundos de audio do Whisper), download (bytes, via `progress_hooks`
+  do yt-dlp), prints e avaliacao da 2a passada, 1a passada por bloco e render (o ffmpeg roda com
+  `-progress pipe:1` quando `renderizar` recebe `progresso`; o stderr vai para arquivo temporario para
+  nao travar o pipe). O "tempo real" dos tokens e por chamada concluida: o `claude -p` so informa o uso no fim.
 - A IA costuma por emoji no titulo e na legenda. O console do Windows (cp1252) quebrava no `print` desses
   textos; `cli._console_utf8()` reconfigura stdout/stderr para UTF-8 no inicio do `main`. Os arquivos sao
   gravados sempre em UTF-8.
