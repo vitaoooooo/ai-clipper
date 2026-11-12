@@ -50,3 +50,30 @@ def test_chamar_ia_sem_claude_instalado(monkeypatch):
     monkeypatch.setattr(ia.shutil, "which", lambda _: None)
     with pytest.raises(RuntimeError, match="Claude Code nao encontrado"):
         ia.chamar_ia("oi", ia.SCHEMA, "claude-sonnet-5-5")
+
+
+def test_guia_de_clipagem_vai_como_prompt_de_sistema(monkeypatch):
+    monkeypatch.setattr(ia.shutil, "which", lambda _: "claude")
+    cap = {}
+    resultado = {"type": "result", "subtype": "success", "is_error": False, "stop_reason": "end_turn",
+                 "structured_output": {"cortes": []}, "usage": {}}
+    monkeypatch.setattr(ia.subprocess, "run", _fake_run(resultado, cap))
+    ia.chamar_ia("oi", ia.SCHEMA, "claude-sonnet-5-5")
+    sistema = cap["cmd"][cap["cmd"].index("--system-prompt") + 1]
+    assert sistema == ia.GUIA_CLIPAGEM
+    assert "mini-historia" in sistema and "ESCALA DE NOTA" in sistema
+
+
+def test_primeira_passada_pede_climax_e_contexto():
+    segs = [{"start": 0.0, "end": 5.0, "text": "olha isso", "words": []}]
+    prompt = ia.montar_prompt(segs, [], "video", 3, 20, 60)
+    assert "climax: segundo do momento principal" in prompt
+    assert "<transcricao>\n[0.0-5.0] olha isso" in prompt
+    assert {"climax", "contexto"} <= set(ia.SCHEMA["properties"]["cortes"]["items"]["required"])
+
+
+def test_corte_le_climax_e_contexto():
+    from clipador.modelos import Corte
+    c = Corte.de_dict({"inicio": 1, "fim": 30, "climax": 20, "contexto": "fuga"})
+    assert c.climax == 20.0 and c.contexto == "fuga"
+    assert Corte.de_dict({"inicio": 1, "fim": 30}).climax is None

@@ -23,6 +23,7 @@ def candidatos_visuais(picos_vis: list[dict], existentes: list[Corte], segs: lis
     brutos = [Corte(inicio=max(0.0, p["segundo"] - alvo * 0.25),
                     fim=p["segundo"] + alvo * 0.75,
                     nota=p["movimento_x_media"],
+                    climax=float(p["segundo"]) + 5,   # meio da janela de 10s do pico
                     motivo="muito movimento na tela (sinal visual; nao passou pela triagem da fala)")
               for p in picos_vis]
     livres = [c for c in brutos if not sobrepoe(c)]

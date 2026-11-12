@@ -27,13 +27,15 @@ Opcoes uteis:
 - `--cortes 8`          quantos cortes gerar (padrao 5)
 - `--min 15 --max 45`   duracao dos cortes em segundos (o corte termina sempre num fim de frase)
 - `--min 61 --max 90`   cortes com mais de 1 minuto (exigencia do Creator Rewards do TikTok)
+- `--max 90`            se os cortes estiverem perdendo contexto: a IA so consegue esticar o corte ate o maximo
 - `--modo crop`         preenche a tela cortando as laterais (padrao: blur, video inteiro com fundo desfocado)
 - `--modo facecam --facecam 0,0,0.25,0.3`  facecam em cima e gameplay embaixo; a regiao da facecam
                         e dada em fracao do video: x, y, largura, altura
 - `--whisper small`     transcricao mais rapida (padrao medium; large-v3 e mais preciso e mais lento)
 - `--idioma en`         se o video for em ingles
 - `--candidatos 15`    quantos trechos a 1a passada (so transcricao) pre-seleciona (padrao 12)
-- `--sem-visao`        pula a 2a passada, em que a IA olha os prints (1 por segundo) dos candidatos
+- `--sem-visao`        pula a 2a passada, em que a IA olha os prints (1 por segundo) dos candidatos,
+                        com 40s antes e 20s depois de cada um, e corrige o inicio e o fim do corte
 - `--chat`              usa o chat da live como sinal (desligado por padrao). YouTube: baixa sozinho
                         (so lives passadas). Twitch: precisa do TwitchDownloaderCLI no PATH
 - `--chat-arquivo chat.json`  usa um chat ja baixado (live_chat.json do YouTube ou JSON do TwitchDownloader)
@@ -60,7 +62,8 @@ Fica em `saida/<titulo-do-video>/`:
 - `resposta_ia.json`: o que a IA respondeu na 1a passada (so transcricao) e quantos tokens gastou.
   Lives longas sao divididas em blocos de ~1h; se algum bloco falhar (ex: limite do plano), rode o
   mesmo comando de novo e so os blocos que faltaram serao refeitos (ficam em `ia_blocos/` ate terminar)
-- `resposta_visao.json`: nota de cada candidato na 2a passada (com imagem) e tokens gastos
+- `resposta_visao.json`: nota de cada candidato na 2a passada (com imagem), limites antes e depois da
+  correcao, `falta_contexto` (a IA achou que o contexto comeca antes do que ela viu) e tokens gastos
 - `frames/`: prints dos candidatos (cache; pode apagar)
 
 ## Estrutura do codigo

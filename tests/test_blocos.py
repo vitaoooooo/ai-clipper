@@ -41,7 +41,7 @@ def _falsa_ia(chamadas, falhar_em=None):
             raise RuntimeError("limite atingido")
         n = int(re.search(r"Escolha os (\d+) melhores", prompt).group(1))
         # devolve trechos dentro do bloco, com o tempo do 1o segmento do prompt
-        t0 = float(prompt.split("TRANSCRICAO:\n[")[1].split("-")[0])
+        t0 = float(prompt.split("<transcricao>\n[")[1].split("-")[0])
         cortes = [{"inicio": t0 + 100 * k, "fim": t0 + 100 * k + 30, "titulo": "t", "legenda_post": "",
                    "hashtags": [], "nota": 5, "motivo": "m"} for k in range(n)]
         return {"cortes": cortes}, {"modelo": modelo, "uso": {"entrada": 10, "saida": 2}}

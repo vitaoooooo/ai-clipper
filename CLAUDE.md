@@ -50,12 +50,23 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
    - Candidatos visuais (`heuristica.candidatos_visuais`): ate `candidatos_visuais` (padrao 4) picos de
      movimento que **nao** se sobrepoem aos candidatos da fala viram candidatos extras, comecando 25% antes
      do pico. Motivo: acao sem fala nunca vira candidato na 1a passada, e a 2a e quem filtra menu/troca de cena.
-   - 2a: `selecao/visao.py` tira prints 1/s de cada candidato (`analise/frames.py`, JPEG de 480px, cache
-     em `frames/<ini>-<fim>/`), roda um `claude -p` por candidato (imagens + transcricao + sinais do trecho, nota
-     de 0 a 10) e fica com os `cortes` de maior nota, sempre entre os candidatos. Um pedido por candidato
+   - A 1a passada devolve tambem `climax` (segundo do momento principal) e `contexto` (o que o espectador
+     precisa saber), que vao para o `Corte` e para o prompt da 2a passada.
+   - 2a: `selecao/visao.py` tira prints 1/s de cada candidato **com `MARGEM_ANTES` = 40s antes e
+     `MARGEM_DEPOIS` = 20s depois** (o problema mais comum era faltar contexto no comeco)
+     (`analise/frames.py`, JPEG de 480px, cache em `frames/<ini>-<fim>/`, marcas `t=` em tempo absoluto do
+     video) e roda um `claude -p` por candidato (imagens + transcricao + sinais da janela). A IA devolve a
+     nota **e o inicio/fim corrigidos**, porque a 1a passada nao ve a tela e erra os limites (feedback real:
+     cortou antes de a briga acabar, faltou contexto no comeco). Os limites sao presos a janela vista e
+     depois passam por `ajustar_cortes` (encaixe, min/max, sobreposicao: a maior nota ganha). Um pedido por candidato
      por causa do limite de imagens por pedido (`MAX_FRAMES`); `PARALELO` deles ao mesmo tempo. Candidato
      que falhar fica com nota <= 5 e nao derruba os outros. `--sem-visao` pula a 2a (`visao = false`).
-5. `selecao/ajuste.py`: encaixa os cortes no inicio e fim de frase e tira sobreposicao. Abaixo de `dmin`,
+     Se o contexto comeca antes da janela vista, a IA marca `falta_contexto` (vai para o
+     `resposta_visao.json` e imprime um aviso; ainda nao muda nada no corte).
+5. `selecao/ajuste.py`: so mexe num limite que cai **dentro de uma fala** (`encaixar_inicio`/`encaixar_fim`,
+   tolerancia de 0.5s). Limite em silencio fica onde esta, porque pode ter vindo da imagem (fim da briga).
+   E **idempotente**: roda depois da 1a e da 2a passada, e ajustar duas vezes da o mesmo resultado
+   (testado em 15 mil casos aleatorios; arredonda para 2 casas ANTES de decidir). Abaixo de `dmin`,
    estica ate o **primeiro fim de frase** depois de `dmin`. Acima de `dmax`, recua ate o **ultimo fim de
    frase** antes de `dmax`; se nao houver, ate a ultima palavra com pontuacao e, por ultimo, ate o fim de
    qualquer palavra. Nunca corta no meio da fala, se houver alternativa. Cortes de mais de 1 min para o
@@ -84,7 +95,10 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
   do usuario e nao pagar API. Nao volte a usar o SDK `anthropic`. `chamar_ia` manda o conteudo (texto e
   imagens base64) por stdin em `--input-format stream-json`, pede `--json-schema` e le `structured_output`
   do evento `result`. Remove `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` do ambiente (senao cobra por API),
-  roda com `cwd` fora do projeto (nao carregar este CLAUDE.md), `--tools ""` e `--system-prompt` curto.
+  roda com `cwd` fora do projeto (nao carregar este CLAUDE.md), `--tools ""` e `--system-prompt` =
+  `GUIA_CLIPAGEM` (o criterio de bom corte: mini-historia contexto -> escalada -> climax -> desfecho,
+  o que funciona em GTA, escala de nota, regras dos textos). O guia e compartilhado pelas duas passadas;
+  os prompts de cada passada (`ia.PROMPT`, `visao.PROMPT`) so descrevem a tarefa, em tags XML.
   Sempre abre "limpo" (`ISOLAMENTO`: `--setting-sources ""`, `--strict-mcp-config`,
   `--disable-slash-commands`), sem settings, CLAUDE.md, MCP e skills do usuario. Medido: ~9.000 -> ~1.100
   tokens de entrada por chamada, e o login do plano continua valendo. Isso e fixo no codigo, nao e opcao da CLI.
@@ -122,5 +136,28 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 - **Fase 1 (feita em 12/11/2026):** chat como sinal opcional (`--chat`); movimento na tela como sinal
   e como fonte de candidatos visuais para a 2a passada; sinais do trecho no prompt da visao; `ajuste.py`
   termina em fim de frase; suporte a cortes de 61 a 90s. Ainda falta validar numa live real de GTA.
+- **Feito (12/11/2026):** a 2a passada corrige inicio/fim olhando a tela; `ajuste.py` idempotente;
+  prompts reescritos com o `GUIA_CLIPAGEM` como prompt de sistema, `climax`/`contexto` da 1a passada,
+  margem de 40s antes e `falta_contexto`. Ideia: refazer o candidato com janela maior quando `falta_contexto`.
 - **Fase 2:** ligar o `historico.py`, processar varios links de uma vez, fila de posts com horarios.
 - **Fase 3:** envio ao TikTok como rascunho (`tiktok.py`) e metricas de desempenho dos cortes.
+
+## Notas do projeto (Obsidian)
+
+O vault do Obsidian do projeto fica em `C:\obsidian\Projeto Clipador` (liberado como diretorio extra em
+`.claude/settings.local.json`). Divisao: este CLAUDE.md e a fonte da verdade **tecnica**; o vault guarda
+planejamento, decisoes, historico e ideias. As notas do vault sao escritas em portugues **com** acentos
+(a regra de "sem acentos" vale so para o codigo).
+
+- `Clipador.md`: nota inicial, com links para as outras
+- `Roteiro.md`: fases com checkboxes (`- [ ]` / `- [x]`)
+- `Decisoes.md` (o arquivo se chama `Decisões.md`): decisoes com data, motivo e consequencia; a mais nova em cima
+- `Log.md`: diario com data (DD/MM/AAAA); a entrada mais nova em cima
+- `Ideias.md`: caixa de entrada do usuario. Leia, mas so mexa se ele pedir
+
+Como usar:
+- No inicio de uma tarefa grande, leia `Roteiro.md` e `Decisões.md` para ter o contexto.
+- Ao terminar uma tarefa que mudou o comportamento, adicione uma entrada no `Log.md` e marque o item no `Roteiro.md`.
+- Decisao de arquitetura ou de produto nova: registre no `Decisões.md` (e, se for armadilha tecnica, aqui tambem).
+- Use links do Obsidian (`[[Roteiro]]`, `[[Decisões]]`) entre as notas. Nao apague notas do vault sem pedir.
+- O vault nao afeta o pipeline: o `claude -p` de `selecao/ia.py` roda isolado e nao le nada disso.

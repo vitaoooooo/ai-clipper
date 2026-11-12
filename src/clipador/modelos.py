@@ -40,6 +40,8 @@ class Corte:
     hashtags: list[str] = field(default_factory=list)
     nota: float = 0.0
     motivo: str = ""
+    climax: float | None = None  # segundo do momento principal (indicado pela 1a passada)
+    contexto: str = ""           # o que o espectador precisa saber para entender o corte
 
     @property
     def duracao(self) -> float:
@@ -55,6 +57,8 @@ class Corte:
             hashtags=list(d.get("hashtags") or []),
             nota=float(d.get("nota") or 0),
             motivo=d.get("motivo") or "",
+            climax=float(d["climax"]) if d.get("climax") is not None else None,
+            contexto=d.get("contexto") or "",
         )
 
     def para_dict(self) -> dict:

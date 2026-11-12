@@ -53,6 +53,9 @@ def transcrever(video: Path, pasta: Path, modelo: str, idioma: str) -> list[Segm
         return json.loads(cache.read_text(encoding="utf-8"))
 
     _registrar_dlls_cuda()
+    # avisos inofensivos do download do modelo (symlinks no Windows, download sem login no Hugging Face)
+    os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
+    os.environ.setdefault("HF_HUB_VERBOSITY", "error")
     from faster_whisper import WhisperModel
 
     audio = carregar_audio(video)

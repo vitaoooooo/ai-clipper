@@ -67,7 +67,7 @@ def test_prompt_so_mostra_chat_e_movimento_quando_existem():
                         picos_chat=[{"segundo": 30, "mensagens": 80, "vezes_a_media": 6.0}],
                         picos_vis=[{"segundo": 40, "movimento_x_media": 2.5}])
     assert "30s (80 msgs, 6.0x)" in com and "40s (2.5x)" in com
-    assert "o chat da live explode" in com
+    assert "PICOS DE CHAT" in com and "PICOS DE MOVIMENTO" in com
 
 
 def test_sinais_do_trecho_para_a_visao():

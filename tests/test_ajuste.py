@@ -1,3 +1,5 @@
+import pytest
+
 from clipador.modelos import Corte
 from clipador.selecao.ajuste import ajustar_cortes
 from clipador.selecao.heuristica import escolher_sem_ia
@@ -37,6 +39,38 @@ def test_frase_longa_corta_na_palavra_com_pontuacao():
     segs = [{"start": 0, "end": 60, "text": "monologo", "words": palavras}]
     [c] = ajustar_cortes([Corte(inicio=0, fim=60, nota=1)], segs, 100, 1, 10, 30)
     assert c.fim == 24.6                  # ultima palavra com pontuacao antes de 30s
+
+
+def test_limite_em_silencio_nao_e_puxado_para_a_fala():
+    """Fim escolhido olhando a imagem (fim da briga, sem fala) fica onde esta."""
+    segs = [seg(0, 10), seg(10, 20), seg(60, 70)]          # silencio de 20s a 60s
+    [c] = ajustar_cortes([Corte(inicio=12, fim=45, nota=1)], segs, 100, 1, 10, 60)
+    assert c.inicio == 9.8                                 # 12 caia dentro da fala 10-20
+    assert c.fim == 45                                     # 45 e silencio: fica
+
+
+@pytest.mark.parametrize("seed", range(5))
+def test_ajustar_duas_vezes_da_o_mesmo_resultado(seed):
+    import random
+    random.seed(seed)
+    for _ in range(3000):
+        t, segs = 0.0, []
+        for _ in range(random.randint(1, 30)):
+            a = t + random.choice([0, 0, random.uniform(0, 15)])
+            b = a + random.uniform(0.5, 12)
+            ws = [{"start": x, "end": x + 0.3, "word": random.choice(["oi", "mano!", "isso,"])}
+                  for x in [a + k * 0.4 for k in range(int((b - a) / 0.4))]]
+            segs.append({"start": a, "end": b, "text": "x", "words": ws})
+            t = b
+        total = t + 20
+        dmin = random.randint(5, 30)
+        dmax = dmin + random.randint(0, 40)
+        cortes = [Corte(inicio=(i := random.uniform(0, total)), fim=i + random.uniform(1, 80),
+                        nota=random.randint(0, 10)) for _ in range(random.randint(1, 6))]
+        uma = ajustar_cortes(cortes, segs, total, 10, dmin, dmax)
+        duas = ajustar_cortes(uma, segs, total, 10, dmin, dmax)
+        assert [(c.inicio, c.fim) for c in uma] == [(c.inicio, c.fim) for c in duas]
+        assert all(c.fim - c.inicio <= dmax + 1e-6 for c in uma)
 
 
 def test_duracao_minima_61s_para_creator_rewards():

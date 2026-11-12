@@ -78,7 +78,8 @@ def executar(fonte: str, cfg: Config) -> list[dict]:
         cortes = escolher_com_visao(candidatos + extras, segs, video.caminho, video.pasta / "frames",
                                     video.titulo, cfg.cortes, cfg.modelo,
                                     salvar_em=video.pasta / "resposta_visao.json",
-                                    sinais={"audio": picos, "chat": picos_chat, "visual": picos_vis})
+                                    sinais={"audio": picos, "chat": picos_chat, "visual": picos_vis},
+                                    dmin=cfg.dmin, dmax=cfg.dmax, total=video.duracao)
 
     # 5. render
     pasta_cortes = video.pasta / "cortes"

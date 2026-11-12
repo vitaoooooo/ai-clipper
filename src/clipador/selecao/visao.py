@@ -1,8 +1,11 @@
 """2a passada da escolha: a IA ve os prints (1 por segundo) de cada candidato junto com a fala.
 
-A 1a passada (ia.py) escolhe de 10 a 15 candidatos so pela transcricao. Aqui cada candidato
-vira uma chamada com as imagens do trecho + a transcricao dele, e a IA da a nota final.
-Os N cortes com maior nota sao os escolhidos. So candidatos da 1a passada podem ser escolhidos.
+A 1a passada (ia.py) escolhe os candidatos so pela transcricao (e sinais), entao os limites que ela
+sugere sao chutes: ela nao sabe quando a briga ou a perseguicao acaba na tela. Aqui cada candidato
+vira uma chamada com as imagens do trecho MAIS uma margem antes e depois (MARGEM_ANTES/DEPOIS), a transcricao
+e os sinais. A IA da a nota final e devolve inicio/fim corrigidos (comeca no contexto, termina depois
+do desfecho). Depois, ajustar_cortes encaixa os novos limites na fala, aplica min/max, tira
+sobreposicao e fica com os N de maior nota.
 
 Uma chamada por candidato porque 15 trechos de 60s dariam ~900 imagens, bem acima do
 limite de imagens por pedido.
@@ -15,49 +18,82 @@ from pathlib import Path
 
 from clipador.analise.frames import amostrar, extrair_frames
 from clipador.modelos import Corte, Segmento
+from clipador.selecao.ajuste import ajustar_cortes
 from clipador.selecao.ia import chamar_ia
 from clipador.util import fmt
 
 MAX_FRAMES = 90      # por chamada; abaixo do limite de imagens por pedido
 PARALELO = 4         # processos do Claude Code ao mesmo tempo
+MARGEM_ANTES = 40    # segundos mostrados antes do trecho sugerido (o problema mais comum e faltar contexto)
+MARGEM_DEPOIS = 20   # segundos mostrados depois (para achar o fim do desfecho/reacao)
 
-PROMPT = """Voce e editor de cortes virais para TikTok. O video original se chama "{titulo}".
-Uma primeira triagem (pela fala ou pelo movimento na tela) separou este trecho como candidato a corte.
-Agora voce tem tambem os prints do video, 1 por segundo (cada imagem vem depois de uma marca
-"t=Xs", o tempo dentro do trecho). Avalie o trecho olhando a IMAGEM junto com a FALA.
+# Tarefa da 2a passada. O criterio (o que e um bom corte, escala de nota, textos) vem do
+# GUIA_CLIPAGEM, que vai como prompt de sistema em toda chamada (ia.SYSTEM).
+PROMPT = """<tarefa>
+Voce vai REVISAR um candidato a corte olhando os prints do video (1 por segundo) junto com a fala.
+A triagem nao viu as imagens: os limites sugeridos sao aproximados e costumam cortar contexto no
+inicio ou o desfecho no final.
+</tarefa>
 
-Trecho: {ini:.1f}s a {fim:.1f}s ({dur:.0f}s)
-Sugestao da triagem: titulo "{titulo_corte}" | motivo: {motivo}
+<video>
+Titulo: "{titulo}"
+</video>
 
-TRANSCRICAO DO TRECHO (tempos do video original):
+<candidato>
+Trecho sugerido: {ini:.1f}s a {fim:.1f}s ({fmt_ini} a {fmt_fim}, {dur:.0f}s)
+Climax indicado pela triagem: {climax}
+Contexto indicado pela triagem: {contexto}
+Titulo sugerido: "{titulo_corte}" | motivo: {motivo}
+</candidato>
+
+<o_que_voce_ve>
+Prints de {ext_ini:.1f}s a {ext_fim:.1f}s: o trecho sugerido mais {margem_antes:.0f}s antes e
+{margem_depois:.0f}s depois. Cada print vem depois de uma marca "t=Xs" com o tempo no video original.
+</o_que_voce_ve>
+
+<passos>
+1. Veja o que acontece na tela do inicio ao fim da janela.
+2. Ache o climax na imagem (pode ser diferente do indicado pela triagem).
+3. A partir do climax, volte ate o primeiro momento em que a situacao ja esta acontecendo e da
+   para entender: esse e o INICIO.
+4. A partir do climax, avance ate a acao se resolver e a reacao terminar: esse e o FIM.
+5. Confira a duracao ({dmin} a {dmax}s). Se passar, corte tempo morto do comeco antes de
+   cortar o desfecho.
+6. Se o contexto necessario comeca antes da janela que voce ve, use o inicio da janela e
+   marque falta_contexto = true.
+7. De a nota do corte FINAL (com os seus limites) pela escala do guia e reescreva os textos.
+</passos>
+
+<transcricao>
 {transcricao}
+</transcricao>
 
-SINAIS NO TRECHO (tempos do video original):
+<sinais>
 {sinais}
-
-Considere:
-- Os primeiros 2 segundos prendem visualmente (acao, reacao, algo chamativo na tela)?
-- A imagem confirma o que a fala sugere (ou a fala engana e na tela nao acontece nada)?
-- Ha momentos visuais fortes que a transcricao nao mostra (explosao, perseguicao, bug, morte, susto)?
-- A tela fica parada, em menu, loading, tela preta ou com algo que estraga o corte?
-- Funciona sozinho, sem contexto do resto do video?
-
-Seja exigente e use a escala toda: 9-10 so para trechos com imagem e fala fortes, 5 ou menos
-se a imagem nao ajuda. Reescreva titulo, legenda e hashtags levando em conta o que aparece na tela.
+</sinais>
 """
 
 SCHEMA = {
     "type": "object",
     "properties": {
+        "inicio": {"type": "number"},
+        "fim": {"type": "number"},
+        "falta_contexto": {"type": "boolean"},
         "nota": {"type": "number"},
         "titulo": {"type": "string"},
         "legenda_post": {"type": "string"},
         "hashtags": {"type": "array", "items": {"type": "string"}},
         "motivo": {"type": "string"},
     },
-    "required": ["nota", "titulo", "legenda_post", "hashtags", "motivo"],
+    "required": ["inicio", "fim", "falta_contexto", "nota", "titulo", "legenda_post", "hashtags",
+                 "motivo"],
     "additionalProperties": False,
 }
+
+
+def janela_com_margem(c: Corte, total: float, antes: float = MARGEM_ANTES,
+                      depois: float = MARGEM_DEPOIS) -> tuple[float, float]:
+    return max(0.0, c.inicio - antes), min(total, c.fim + depois)
 
 
 def _transcricao_do_trecho(segs: list[Segmento], ini: float, fim: float) -> str:
@@ -87,36 +123,57 @@ def _imagem(caminho: Path) -> dict:
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": dados}}
 
 
-def _avaliar(c: Corte, frames: list[Path], segs: list[Segmento], titulo: str, modelo: str,
-             sinais: dict | None = None):
+def _avaliar(c: Corte, ext: tuple[float, float], frames: list[Path], segs: list[Segmento],
+             titulo: str, modelo: str, dmin: int, dmax: int, sinais: dict | None = None):
+    ext_ini, ext_fim = ext
     texto = PROMPT.format(titulo=titulo, ini=c.inicio, fim=c.fim, dur=c.duracao,
+                          fmt_ini=fmt(c.inicio), fmt_fim=fmt(c.fim),
+                          ext_ini=ext_ini, ext_fim=ext_fim, dmin=dmin, dmax=dmax,
+                          margem_antes=c.inicio - ext_ini, margem_depois=ext_fim - c.fim,
+                          climax=f"{c.climax:.1f}s" if c.climax is not None else "(nao indicado)",
+                          contexto=c.contexto or "(nao indicado)",
                           titulo_corte=c.titulo or "(sem titulo)", motivo=c.motivo,
-                          transcricao=_transcricao_do_trecho(segs, c.inicio, c.fim),
-                          sinais=_sinais_do_trecho(sinais, c.inicio, c.fim))
+                          transcricao=_transcricao_do_trecho(segs, ext_ini, ext_fim),
+                          sinais=_sinais_do_trecho(sinais, ext_ini, ext_fim))
     conteudo: list[dict] = [{"type": "text", "text": texto}]
     for i, f in amostrar(frames, MAX_FRAMES):
-        conteudo.append({"type": "text", "text": f"t={i}s"})
+        conteudo.append({"type": "text", "text": f"t={ext_ini + i:.0f}s"})   # frame i = ext_ini + i s
         conteudo.append(_imagem(f))
     dados, info = chamar_ia(conteudo, SCHEMA, modelo)
     return dados, info["uso"]
 
 
+def _limites_da_ia(c: Corte, dados: dict, ext: tuple[float, float]) -> tuple[float, float]:
+    """Limites devolvidos pela IA, presos a janela que ela viu. Se vierem absurdos, mantem os originais."""
+    ext_ini, ext_fim = ext
+    ini = min(max(float(dados["inicio"]), ext_ini), ext_fim)
+    fim = min(max(float(dados["fim"]), ext_ini), ext_fim)
+    if fim - ini < 5:
+        return c.inicio, c.fim
+    return ini, fim
+
+
 def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Path,
                        pasta_frames: Path, titulo: str, n: int, modelo: str,
-                       salvar_em: Path | None = None, sinais: dict | None = None) -> list[Corte]:
-    """Da a nota final a cada candidato olhando os frames e devolve os `n` melhores.
+                       salvar_em: Path | None = None, sinais: dict | None = None,
+                       dmin: int = 20, dmax: int = 60, total: float | None = None) -> list[Corte]:
+    """Da a nota final e corrige os limites de cada candidato olhando os frames; devolve os `n` melhores.
 
     `sinais` = {"audio": [...], "chat": [...], "visual": [...]}: os picos que caem em cada trecho
-    vao no prompt daquele candidato.
+    vao no prompt daquele candidato. `total` = duracao do video (limita a margem no final).
     """
-    print(f"Tirando prints (1/s) dos {len(candidatos)} candidatos...")
-    frames = [extrair_frames(video, c.inicio, c.fim, pasta_frames / f"{c.inicio:.2f}-{c.fim:.2f}")
-              for c in candidatos]
+    if total is None:
+        total = max((c.fim for c in candidatos), default=0.0) + MARGEM_DEPOIS
+    janelas = [janela_com_margem(c, total) for c in candidatos]
 
-    print(f"Pedindo pra IA avaliar os candidatos com imagem + fala...")
+    print(f"Tirando prints (1/s) dos {len(candidatos)} candidatos "
+          f"(com {MARGEM_ANTES}s antes e {MARGEM_DEPOIS}s depois)...")
+    frames = [extrair_frames(video, a, b, pasta_frames / f"{a:.2f}-{b:.2f}") for a, b in janelas]
+
+    print("Pedindo pra IA avaliar os candidatos com imagem + fala e corrigir os limites...")
     with ThreadPoolExecutor(PARALELO) as ex:
-        futuros = [ex.submit(_avaliar, c, f, segs, titulo, modelo, sinais)
-                   for c, f in zip(candidatos, frames)]
+        futuros = [ex.submit(_avaliar, c, j, f, segs, titulo, modelo, dmin, dmax, sinais)
+                   for c, j, f in zip(candidatos, janelas, frames)]
         resultados = []
         for c, fut in zip(candidatos, futuros):
             try:
@@ -126,19 +183,25 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
                 resultados.append((None, None))
 
     avaliados, registro = [], []
-    for c, f, (dados, uso) in zip(candidatos, frames, resultados):
+    for c, j, f, (dados, uso) in zip(candidatos, janelas, frames, resultados):
         if dados is None:
             # sem a avaliacao visual, fica com a nota da 1a passada, mas atras dos avaliados
             avaliados.append(replace(c, nota=min(c.nota, 5.0)))
         else:
-            avaliados.append(replace(c, nota=float(dados["nota"]),
+            ini, fim = _limites_da_ia(c, dados, j)
+            avaliados.append(replace(c, inicio=ini, fim=fim, nota=float(dados["nota"]),
                                      titulo=dados["titulo"] or c.titulo,
                                      legenda_post=dados["legenda_post"] or c.legenda_post,
                                      hashtags=list(dados["hashtags"]) or c.hashtags,
                                      motivo=dados["motivo"] or c.motivo))
-        registro.append({"inicio": c.inicio, "fim": c.fim, "frames": len(f),
+        a = avaliados[-1]
+        falta = bool(dados and dados.get("falta_contexto"))
+        registro.append({"inicio_1a_passada": c.inicio, "fim_1a_passada": c.fim,
+                         "inicio": a.inicio, "fim": a.fim, "falta_contexto": falta, "frames": len(f),
                          "nota_1a_passada": c.nota, "uso": uso, "resposta": dados})
-        print(f"  {fmt(c.inicio)}-{fmt(c.fim)}  nota {c.nota:g} -> {avaliados[-1].nota:g}")
+        mudou = "" if (a.inicio, a.fim) == (c.inicio, c.fim) else f"  limites -> {fmt(a.inicio)}-{fmt(a.fim)}"
+        aviso = "  (falta contexto antes da janela)" if falta else ""
+        print(f"  {fmt(c.inicio)}-{fmt(c.fim)}  nota {c.nota:g} -> {a.nota:g}{mudou}{aviso}")
 
     if salvar_em is not None:
         salvar_em.write_text(json.dumps({"modelo": modelo, "candidatos": registro},
@@ -153,5 +216,5 @@ def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Pat
         print(f"\n  ATENCAO: {falhas} de {len(candidatos)} candidatos nao foram avaliados com imagem; "
               "eles ficaram com nota <= 5 e so entram se faltar candidato avaliado.\n")
 
-    melhores = sorted(avaliados, key=lambda c: c.nota, reverse=True)[:n]
-    return sorted(melhores, key=lambda c: c.inicio)
+    # novos limites podem ter crescido e se sobreposto: o ajuste resolve (maior nota ganha)
+    return ajustar_cortes(avaliados, segs, total, n, dmin, dmax)

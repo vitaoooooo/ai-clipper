@@ -15,3 +15,6 @@ dist/
 .env
 config.toml
 *.db
+
+# configuracao local do Claude Code (caminhos desta maquina)
+.claude/settings.local.json

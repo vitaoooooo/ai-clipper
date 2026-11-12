@@ -16,29 +16,92 @@ from pathlib import Path
 from clipador.modelos import Corte, Pico, Segmento
 from clipador.util import fmt
 
-PROMPT = """Voce e editor de cortes virais para TikTok. Abaixo esta a transcricao de um video do YouTube
-chamado "{titulo}", com tempos em segundos, e sinais de onde o video fica mais intenso: audio bem mais
-alto que o normal (reacoes, gritos, explosoes, risadas){outros_sinais}.{parte}
+# Guia de clipagem: vai como prompt de sistema em TODAS as chamadas (1a e 2a passada), para as duas
+# usarem o mesmo criterio. Revisado e aprovado pelo usuario em 12/11/2026.
+GUIA_CLIPAGEM = """Voce e um editor senior de cortes para TikTok, especialista em gameplay de GTA (modo historia,
+online e RP) e em lives de streamers. Seu trabalho e transformar trechos de videos longos em
+cortes que prendem quem NUNCA viu o video original.
 
-Escolha os {n} melhores trechos para virar cortes independentes de TikTok. Regras:
-- Cada corte deve ter entre {dmin} e {dmax} segundos.
-- Precisa fazer sentido sozinho, sem contexto do resto do video.
-- Comece num gancho forte (algo engracado, chocante, uma pergunta, uma reacao) nos primeiros 2 segundos.
-- Termine num ponto natural (fim de frase, desfecho, punchline). Nunca no meio de uma fala.
-- Prefira momentos engracados, absurdos, epicos, surpreendentes ou polemicos.
-- Os cortes nao podem se sobrepor.
+O QUE E UM BOM CORTE
+Um corte e uma mini-historia completa, com 4 partes:
+1. Contexto: o espectador entende o que esta acontecendo (quem, onde, qual o objetivo ou o problema).
+2. Escalada: a situacao fica mais tensa, engracada ou absurda.
+3. Climax: o momento principal (a batida, a fuga, o bug, a frase, o susto).
+4. Desfecho: o resultado e a reacao depois do climax (a risada, o grito, o "nao acredito").
+Sem contexto, quem chega no corte nao entende e sai. Sem desfecho, o corte parece interrompido.
+As duas falhas matam a retencao.
 
-Para cada corte, preencha:
-- inicio / fim: em segundos, conforme a transcricao
-- titulo: texto curto que aparece no topo do video (max 6 palavras)
-- legenda_post: legenda para o post do TikTok
-- hashtags: lista de hashtags com # (ex: "#gta6")
-- nota: de 0 a 10, quanto potencial viral o trecho tem
-- motivo: por que esse trecho funciona
+INICIO: GANCHO SEM PERDER CONTEXTO
+- O titulo aparece na tela nos primeiros segundos e ja funciona como gancho. Por isso o corte
+  NAO precisa comecar no climax: comece no inicio da situacao.
+- Comece no primeiro momento em que algo ja esta acontecendo: a fala que apresenta a situacao,
+  o inicio da acao, a primeira reacao. Corte so o tempo morto antes disso (andar sem rumo,
+  menu, silencio).
+- Na duvida entre perder contexto e ficar alguns segundos mais longo, fique mais longo
+  (dentro do limite de duracao).
 
+FIM
+- Termine depois do desfecho E da reacao, num fim de frase ou numa pausa.
+- Nunca no meio de uma fala ou de uma acao em andamento.
+- Se a reacao continua por varios segundos e e boa, inclua.
+
+O QUE FUNCIONA EM GTA
+- Perseguicoes e fugas da policia, batidas espetaculares, assaltos que dao certo ou muito errado
+- Brigas, tiroteios, mortes inesperadas ou engracadas
+- Bugs e fisica absurda do jogo
+- Interacoes engracadas com NPCs ou outros jogadores (RP)
+- Reacoes fortes do streamer: raiva, risada, susto, frase marcante
+
+O QUE EVITAR
+- Menu, mapa, loading, tela preta, tela de morte longa, inventario
+- Trechos que dependem de algo explicado muito antes no video
+- Cutscenes longas da historia do jogo sem reacao do jogador
+
+ESCALA DE NOTA (potencial viral, 0 a 10)
+9-10: arco completo, climax forte na imagem e na fala; quem nunca viu o video entende e compartilha
+7-8:  bom e completo, mas o climax e menos marcante
+5-6:  interessante, mas falta contexto, desfecho ou forca visual
+0-4:  confuso, parado ou sem nada acontecendo
+Use a escala toda; nao de 8 para tudo.
+
+TEXTOS DO POST (portugues do Brasil, COM acentuacao normal)
+- titulo: ate 6 palavras, tom de TikTok, gera curiosidade sem entregar o final. Pode ter 1 emoji.
+- legenda_post: 1 ou 2 frases curtas + uma pergunta para puxar comentarios.
+- hashtags: 3 a 5 relevantes ao trecho (as hashtags fixas do canal sao adicionadas depois).
+
+Responda somente com os dados pedidos, no formato do schema. Nao use ferramentas."""
+
+# Tarefa da 1a passada (triagem): so transcricao + sinais, sem imagens.
+PROMPT = """<tarefa>
+Voce vai fazer a TRIAGEM de um video pela transcricao e por sinais automaticos. Voce NAO ve as
+imagens: uma segunda etapa vai olhar os prints de cada trecho e ajustar os limites. Por isso:
+- Prefira trechos com arco completo na fala (contexto -> climax -> reacao).
+- Escolha limites generosos: comece no inicio da situacao e termine depois da reacao.
+- Trechos com pouca fala mas sinais fortes (audio, chat, movimento) tambem podem ser bons.
+</tarefa>
+
+<video>
+Titulo: "{titulo}"{parte}
+</video>
+
+<pedido>
+Escolha os {n} melhores trechos para cortes independentes, cada um com {dmin} a {dmax} segundos,
+sem sobreposicao. Para cada um:
+- inicio, fim: em segundos do video
+- climax: segundo do momento principal
+- contexto: em uma frase, o que o espectador precisa saber para entender o corte
+- titulo, legenda_post, hashtags: conforme o guia
+- nota: conforme a escala do guia
+- motivo: por que funciona e o que pode estar faltando
+</pedido>
+
+<sinais>
 {sinais}
-TRANSCRICAO:
+</sinais>
+
+<transcricao>
 {transcricao}
+</transcricao>
 """
 
 SCHEMA = {
@@ -51,13 +114,16 @@ SCHEMA = {
                 "properties": {
                     "inicio": {"type": "number"},
                     "fim": {"type": "number"},
+                    "climax": {"type": "number"},
+                    "contexto": {"type": "string"},
                     "titulo": {"type": "string"},
                     "legenda_post": {"type": "string"},
                     "hashtags": {"type": "array", "items": {"type": "string"}},
                     "nota": {"type": "number"},
                     "motivo": {"type": "string"},
                 },
-                "required": ["inicio", "fim", "titulo", "legenda_post", "hashtags", "nota", "motivo"],
+                "required": ["inicio", "fim", "climax", "contexto", "titulo", "legenda_post",
+                             "hashtags", "nota", "motivo"],
                 "additionalProperties": False,
             },
         },
@@ -66,8 +132,7 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
-SYSTEM = ("Voce e um assistente de edicao de video. Responda somente com os dados pedidos, "
-          "no formato do schema. Nao use ferramentas.")
+SYSTEM = GUIA_CLIPAGEM
 TIMEOUT = 900  # segundos por chamada
 # variaveis que fariam o Claude Code cobrar por API em vez de usar a cota do plano
 ENV_DE_API = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
@@ -95,15 +160,9 @@ def texto_sinais(picos: list[Pico], picos_chat: list[dict] | None = None,
 def montar_prompt(segs: list[Segmento], picos: list[Pico], titulo: str,
                   n: int, dmin: int, dmax: int, parte: str = "",
                   picos_chat: list[dict] | None = None, picos_vis: list[dict] | None = None) -> str:
-    linhas = "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in segs)
-    outros = []
-    if picos_chat:
-        outros.append("momentos em que o chat da live explode")
-    if picos_vis:
-        outros.append("momentos de muito movimento na tela")
-    outros_sinais = "".join(f", {o}" for o in outros)
-    return PROMPT.format(titulo=titulo, n=n, dmin=dmin, dmax=dmax, outros_sinais=outros_sinais,
-                         sinais=texto_sinais(picos, picos_chat, picos_vis),
+    linhas = "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in segs) or "(sem fala)"
+    return PROMPT.format(titulo=titulo, n=n, dmin=dmin, dmax=dmax,
+                         sinais=texto_sinais(picos, picos_chat, picos_vis).strip(),
                          transcricao=linhas, parte=parte)
 
 
@@ -214,7 +273,7 @@ def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmi
         return json.loads(cache.read_text(encoding="utf-8"))
     parte = ""
     if qtd > 1:
-        parte = (f"\n\nEste video e longo e foi dividido em partes. Esta e a parte {i} de {qtd}, "
+        parte = (f"\nEste video e longo e foi dividido em partes. Esta e a parte {i} de {qtd}, "
                  f"de {fmt(ini)} a {fmt(fim)}. Escolha os trechos so dentro dela.")
     prompt = montar_prompt(segs_bloco, _no_intervalo(picos, ini, fim), titulo, n_bloco, dmin, dmax, parte,
                            _no_intervalo(picos_chat, ini, fim), _no_intervalo(picos_vis, ini, fim))
