@@ -19,3 +19,6 @@ config.toml
 # configuracao local do Claude Code (caminhos desta maquina)
 .claude/settings.local.json
 CLAUDE.local.md
+
+# lancador gerado por scripts/criar_exe.py (tem o caminho desta maquina)
+Clipador.exe
