@@ -78,8 +78,8 @@ tarefas. Ele fica fora do git; gere de novo em cada PC.
 Três telas: **nova execução** (links ou arquivos, presets do `config.toml` editáveis, facecam desenhada
 sobre um print do vídeo, prévia 9:16 e estimativa de chamadas ao Claude), **processando** (etapas,
 barras, tokens e candidatos ao vivo) e **resultados** (player, legenda e hashtags para copiar,
-"marcar como postado"). O servidor roda em segundo plano: fechar a janela não para o lote, e abrir de
-novo reconecta. A postagem continua manual.
+"marcar como postado"). Fechar a janela pelo X desliga tudo: o Clipador pergunta antes e
+avisa se algum vídeo ainda está sendo processado (o que já foi transcrito fica salvo). A postagem continua manual.
 
 O resultado fica em `saida/<video>/cortes/`: os `corte_XX.mp4` e o `posts.txt` com a legenda,
 as hashtags e o motivo de cada escolha.

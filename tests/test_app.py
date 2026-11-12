@@ -413,3 +413,23 @@ def test_servidor_nao_sobe_de_dentro_da_raiz(monkeypatch, tmp_path):
     monkeypatch.setattr(lancador, "LOG", tmp_path / "ui.log")
     lancador.subir_servidor(8765, tmp_path)
     assert capturado["cwd"] != tmp_path and "--raiz" in capturado["cmd"]
+
+
+def test_mensagem_fechar_sem_nada_rodando():
+    from clipador.app.lancador import mensagem_fechar
+    assert mensagem_fechar(None) == ("Fechar o Clipador?", False)
+    texto, aviso = mensagem_fechar({"itens": [{"status": "ok", "titulo": "x"}]})
+    assert not aviso and texto == "Fechar o Clipador?"
+
+
+def test_mensagem_fechar_avisa_o_que_esta_em_andamento():
+    from clipador.app.lancador import mensagem_fechar
+    foto = {"itens": [
+        {"status": "rodando", "titulo": "Live GTA", "etapas": [
+            {"titulo": "Baixando", "status": "ok"}, {"titulo": "Transcrevendo", "status": "rodando"}]},
+        {"status": "fila", "fonte": "https://x"}, {"status": "fila", "fonte": "https://y"},
+    ]}
+    texto, aviso = mensagem_fechar(foto)
+    assert aviso
+    assert "Live GTA (transcrevendo)" in texto
+    assert "2 video(s) esperando na fila" in texto

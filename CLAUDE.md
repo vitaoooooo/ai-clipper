@@ -24,7 +24,7 @@ clipador "<link>" --reprisar-ia   # reusa as respostas salvas da IA (testar sem 
 clipador "<link1>" "<link2>"      # varios videos, um depois do outro
 clipador --lista links.txt        # um link por linha (# = comentario)
 clipador-ui                       # interface grafica (extra `ui`); rode no diretorio do config.toml
-clipador-ui --parar               # desliga o servidor da interface (fechar a janela nao para o lote)
+clipador-ui --parar               # desliga o servidor da interface (o X da janela tambem, apos confirmar)
 clipador-ui --navegador           # abre no navegador em vez da janela; --sem-janela so sobe o servidor
 python scripts\criar_exe.py       # gera o Clipador.exe (lancador C# compilado com o csc.exe do Windows)
 ```
@@ -130,7 +130,10 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 - `app/` (interface grafica, extra `ui`): `clipador-ui` (`lancador.py`) sobe `python -m clipador.app.servidor`
   como processo **independente** (sem console, log em `%TEMP%\clipador-ui.log`) se ainda nao houver um na
   porta 8765, e abre a janela (pywebview/WebView2; sem ele, Edge `--app`; por ultimo, o navegador). Fechar
-  a janela nao para nada: abrir de novo reconecta. Desligar: botao "Desligar servidor" ou `clipador-ui --parar`.
+  a janela pelo X pergunta antes (lista o que esta rodando/na fila) e, se confirmar, desliga o servidor e o lote
+  (`lancador._ao_fechar`, evento `closing` do pywebview: cancela o fechamento e chama `clipadorPedirFechar` no
+  `app.js`, que mostra o dialogo no visual do app e, se confirmar, chama `pywebview.api.fechar`. Plano B: caixa
+  nativa. No Edge/navegador nao da para interceptar). Os `confirm()` nativos viraram `confirmar()` no `app.js`. Desligar: botao "Desligar servidor" ou `clipador-ui --parar`.
   - `servidor.py`: Starlette so em 127.0.0.1. O estado vai por SSE (`/api/eventos`, uma "foto" inteira a cada
     mudanca); os MP4 saem por `/midia/<pasta>/<arquivo>` (FileResponse responde Range). A raiz (pasta com o
     `config.toml` e a `saida/`) e o diretorio onde o `clipador-ui` foi aberto.

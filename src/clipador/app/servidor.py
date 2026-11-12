@@ -4,7 +4,7 @@ Uso direto (normalmente quem chama e o `clipador-ui`):
     python -m clipador.app.servidor --porta 8765 --raiz <pasta do projeto>
 
 O progresso vai por SSE (/api/eventos): uma "foto" do estado inteiro sempre que ele muda.
-Fechar a janela nao para nada; o servidor so para com /api/desligar (`clipador-ui --parar`).
+O servidor so para com /api/desligar: fechar a janela pelo X (com confirmacao), o botao ou `clipador-ui --parar`.
 """
 import argparse
 import asyncio

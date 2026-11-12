@@ -51,6 +51,49 @@ async function api(caminho, opcoes = {}) {
 }
 
 let avisoTimer = null;
+// Dialogo de confirmacao no visual do app (substitui o confirm() nativo). Devolve Promise<boolean>.
+// itens: [{nome, etapa, rodando}] numa lista; perigo: botao rosa, icone de alerta e foco no "nao".
+const ICONE_ALERTA = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2 21h20L12 3z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>`;
+const ICONE_DESLIGAR = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg>`;
+const ICONE_SALVAR = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>`;
+function confirmar({ titulo, texto = "", itens = [], nota = "", sim = "Confirmar", nao = "Cancelar", perigo = false, icone = null, classe = "" }) {
+  document.querySelectorAll(".dialogo-fundo").forEach((d) => d.remove());
+  return new Promise((resolver) => {
+    const fundo = document.createElement("div");
+    fundo.className = "dialogo-fundo " + classe;
+    fundo.innerHTML = `<div class="dialogo${perigo ? " perigo" : ""}" role="alertdialog" aria-modal="true" aria-labelledby="dialogo-titulo">
+      <div class="dialogo-topo"><div class="dialogo-icone">${icone || (perigo ? ICONE_ALERTA : ICONE_DESLIGAR)}</div>
+        <div><h2 id="dialogo-titulo">${esc(titulo)}</h2>${texto ? `<p>${esc(texto)}</p>` : ""}</div></div>
+      ${itens.length ? `<div class="dialogo-itens">${itens.map((it) => `<div class="dialogo-item${it.rodando ? " rodando" : ""}">
+        <span class="ponto"></span><span class="nome" title="${esc(it.nome)}">${esc(it.nome)}</span><span class="etapa">${esc(it.etapa || "")}</span></div>`).join("")}</div>` : ""}
+      ${nota ? `<div class="dialogo-nota">${esc(nota)}</div>` : ""}
+      <div class="dialogo-acoes"><button class="botao" data-r="0">${esc(nao)}</button>
+        <button class="botao ${perigo ? "primario" : "claro"}" data-r="1">${esc(sim)}</button></div></div>`;
+    const fim = (v) => { document.removeEventListener("keydown", tecla, true); fundo.remove(); resolver(v); };
+    const tecla = (e) => { if (e.key === "Escape") { e.preventDefault(); fim(false); } };
+    fundo.addEventListener("click", (e) => { if (e.target === fundo) fim(false); });
+    fundo.querySelectorAll("button").forEach((b) => (b.onclick = () => fim(b.dataset.r === "1")));
+    document.addEventListener("keydown", tecla, true);
+    document.body.appendChild(fundo);
+    fundo.querySelector(`[data-r="${perigo ? 0 : 1}"]`).focus();
+  });
+}
+
+// O que esta rodando ou na fila, no formato dos itens do confirmar().
+function itensEmAndamento() {
+  const itens = (S.foto && S.foto.itens) || [];
+  const linhas = [];
+  for (const it of itens.filter((i) => i.status === "rodando")) {
+    const etapa = [...(it.etapas || [])].reverse().find((e) => e.status === "rodando");
+    const barra = barraPrincipal(it);
+    const pct = barra && barra.total ? ` ${Math.floor((100 * barra.feito) / barra.total)}%` : "";
+    linhas.push({ nome: it.titulo || it.fonte, etapa: etapa ? etapa.titulo.toLowerCase() + pct : "rodando", rodando: true });
+  }
+  const fila = itens.filter((i) => i.status === "fila");
+  if (fila.length) linhas.push({ nome: fila.length === 1 ? (fila[0].titulo || fila[0].fonte) : `${fila.length} vídeos`, etapa: "na fila" });
+  return linhas;
+}
+
 function avisar(msg, erro = false) {
   const el = $("#aviso");
   el.textContent = msg;
@@ -529,7 +572,8 @@ async function salvarPreset(novo = false) {
   if (novo === true || !nome) {
     nome = (prompt("Nome do preset (ex.: o canal do streamer, sem espaços):", "") || "").trim();
     if (!nome) return;
-  } else if (!confirm(`Gravar as opções atuais no preset "${nome}" do config.toml?`)) return;
+  } else if (!(await confirmar({ titulo: `Salvar o preset "${nome}"?`, texto: "As opções atuais vão ser gravadas no config.toml.",
+    sim: "Salvar", icone: ICONE_SALVAR }))) return;
   const valores = opcoesParaEnviar(OPCOES_PRESET);
   try {
     await api(`/api/canais/${encodeURIComponent(nome)}`, { method: "PUT", body: { valores } });
@@ -555,7 +599,7 @@ function desenharFila() {
   const itens = foto.itens || [];
   if (!itens.length) {
     $("#tela").innerHTML = `<div class="tela"><div class="vazio"><h2>Nada na fila</h2>
-      <div>Cole os links em Nova execução e clique em Gerar cortes. Pode fechar a janela: o servidor continua cortando.</div>
+      <div>Cole os links em Nova execução e clique em Gerar cortes. Fechar a janela pelo X desliga tudo (o Clipador pergunta antes).</div>
       <a class="botao primario" href="#/nova">${SVG.play}Nova execução</a></div></div>`;
     return;
   }
@@ -582,7 +626,8 @@ function desenharFila() {
   const lim = $("#limpar"); if (lim) lim.onclick = async () => { S.filaSel = null; await api("/api/limpar", { body: {} }); };
   const parar = $("#parar");
   if (parar) parar.onclick = async () => {
-    if (!confirm("Parar o vídeo que está rodando e cancelar a fila? O que já foi feito fica em cache.")) return;
+    if (!(await confirmar({ titulo: "Parar tudo?", texto: "O vídeo que está rodando para agora e a fila é cancelada.",
+      itens: itensEmAndamento(), nota: "O que já foi feito fica em cache e é reaproveitado.", sim: "Parar", nao: "Continuar", perigo: true }))) return;
     try { await api("/api/parar", { body: {} }); } catch (e) { avisar(e.message, true); }
   };
 }
@@ -807,13 +852,34 @@ async function desenharBiblioteca() {
 
 // ============================================================ inicio
 $("#desligar").onclick = async () => {
-  const rodando = S.foto && S.foto.rodando;
-  if (!confirm(rodando ? "Tem vídeo rodando. Desligar o servidor para tudo o que está rodando e cancela a fila. Desligar mesmo?"
-                       : "Desligar o servidor do Clipador? Para abrir de novo, rode clipador-ui.")) return;
+  const itens = itensEmAndamento();
+  if (!(await confirmar(itens.length
+    ? { titulo: "Desligar com vídeo em andamento?", texto: "Desligar o servidor para tudo isto agora:", itens,
+        nota: "O que já foi feito fica em cache e é reaproveitado.", sim: "Desligar", nao: "Continuar", perigo: true }
+    : { titulo: "Desligar o servidor?", texto: "Para abrir de novo, use o Clipador.exe ou clipador-ui.", sim: "Desligar" }))) return;
+  S.desligado = true;
   try { await api("/api/desligar", { body: {} }); } catch (e) { /* ja caiu */ }
   if (fonteEventos) fonteEventos.close();
   document.body.innerHTML = `<main class="tela" style="justify-content:center;align-items:center;text-align:center;width:100%">
     <h1 class="titulo-tela">Servidor desligado</h1><div class="fraco">Para abrir de novo, rode <span class="mono">clipador-ui</span>. Pode fechar esta janela.</div></main>`;
+};
+// Fechar a janela pelo X (pywebview): o Python cancela o fechamento e chama isto. Confirmando, ele
+// desliga o servidor e fecha a janela (window.pywebview.api.fechar). Devolve true na hora, sem esperar.
+window.clipadorPedirFechar = () => {
+  const fechar = () => window.pywebview.api.fechar();
+  if (S.desligado) { fechar(); return true; }
+  if (document.querySelector(".dialogo-fundo.fechar")) return true;
+  const itens = itensEmAndamento();
+  confirmar(itens.length
+    ? { titulo: "Fechar o Clipador?", texto: "Ainda tem coisa em andamento. Fechar desliga o servidor e para tudo isto:", itens,
+        nota: "O que já foi baixado e transcrito fica em cache e é reaproveitado.", sim: "Fechar e parar", nao: "Continuar", perigo: true, classe: "fechar" }
+    : { titulo: "Fechar o Clipador?", texto: "O servidor também é desligado.", sim: "Fechar", nao: "Cancelar", classe: "fechar" })
+    .then((ok) => {
+      if (!ok) return;
+      document.body.innerHTML = `<main class="tela" style="justify-content:center;align-items:center;width:100%"><div class="fraco">Desligando…</div></main>`;
+      fechar();
+    });
+  return true;
 };
 window.addEventListener("hashchange", rotear);
 window.addEventListener("resize", () => { if (S.rota === "nova") desenharSelecao(); });
