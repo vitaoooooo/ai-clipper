@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clipador"
+version = "0.1.0"
+description = "Transforma videos longos em cortes verticais para TikTok, escolhidos por IA."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "yt-dlp",
+    "faster-whisper",
+    "anthropic",
+    "numpy",
+    "tomli; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+clipador = "clipador.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

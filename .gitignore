@@ -1,0 +1,17 @@
+# saida dos cortes (videos grandes)
+saida/
+
+# ambiente python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# segredos e estado local
+.env
+config.toml
+*.db

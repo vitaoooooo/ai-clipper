@@ -1,0 +1,3 @@
+# Instala o clipador (e as dependencias do pyproject.toml) em modo editavel.
+# Para rodar os testes tambem: pip install -e .[dev]
+-e .

@@ -1,0 +1,24 @@
+# Copie para config.toml (que fica fora do git) e ajuste.
+# Ordem de prioridade: [padrao] < [canais.<nome>] < opcoes da linha de comando.
+#
+# Uso: clipador "<link>" --canal exemplo
+
+[padrao]
+cortes = 5
+dmin = 20            # duracao minima do corte, em segundos
+dmax = 60            # duracao maxima (Creator Rewards do TikTok exige > 60s)
+modo = "blur"        # blur | crop | facecam
+whisper = "medium"   # small | medium | large-v3
+idioma = "pt"
+modelo = "claude-sonnet-5-5"
+saida = "saida"
+hashtags_extras = ["#gta6"]
+
+# Um preset por streamer/canal que voce clipa.
+[canais.exemplo]
+credito = "@nomedocriador"
+modo = "facecam"
+# Regiao da facecam no video original, em fracao (0 a 1): x, y, largura, altura.
+# Ex.: facecam no canto superior esquerdo ocupando 25% da largura e 30% da altura.
+facecam = [0.0, 0.0, 0.25, 0.30]
+hashtags_extras = ["#gta6", "#gtavi", "#gta"]
