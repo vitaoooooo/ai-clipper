@@ -123,6 +123,10 @@ O Whisper roda local (faster-whisper): usa a GPU NVIDIA se puder, senao cai para
 - **Armadilha:** o servidor sobe com `python -m` e `cwd` = pasta temporaria (nao a raiz), porque com `-m`
   a pasta atual entra no `sys.path` e o `clipador.py` da raiz esconde o pacote (o servidor faz `os.chdir`
   para a `--raiz` sozinho). Os filhos do multiprocessing herdam o `sys.path` do servidor.
+  E sobe com `CREATE_NO_WINDOW` (console oculto, herdado pelos filhos), **nunca** `DETACHED_PROCESS`: sem
+  console, o `python.exe` do .venv (redirecionador) abre o python real num console novo e visivel, e fechar
+  essa janela mata o servidor (`forrtl ... window-CLOSE event`). A janela chama
+  `SetCurrentProcessExplicitAppUserModelID` para ter o icone do Clipador na barra de tarefas, e nao o do Python.
 - `app/` (interface grafica, extra `ui`): `clipador-ui` (`lancador.py`) sobe `python -m clipador.app.servidor`
   como processo **independente** (sem console, log em `%TEMP%\clipador-ui.log`) se ainda nao houver um na
   porta 8765, e abre a janela (pywebview/WebView2; sem ele, Edge `--app`; por ultimo, o navegador). Fechar

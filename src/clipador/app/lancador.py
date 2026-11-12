@@ -56,7 +56,11 @@ def subir_servidor(porta: int, raiz: Path) -> dict:
     cmd = [sys.executable, "-m", "clipador.app.servidor", "--porta", str(porta), "--raiz", str(raiz)]
     flags = 0
     if sys.platform == "win32":
-        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+        # CREATE_NO_WINDOW da ao servidor um console OCULTO, herdado pelos filhos (o python real do
+        # .venv, os workers, ffmpeg e claude). Nao use DETACHED_PROCESS: sem console, o python.exe do
+        # .venv (um redirecionador) abre o python de verdade num console NOVO e visivel, e fechar essa
+        # janela mata o servidor ("forrtl: program aborting due to window-CLOSE event").
+        flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
     log = open(LOG, "a", encoding="utf-8")
     log.write(f"\n=== {time.strftime('%d/%m/%Y %H:%M:%S')} {' '.join(cmd)}\n")
     log.flush()
@@ -73,11 +77,23 @@ def subir_servidor(porta: int, raiz: Path) -> dict:
     raise SystemExit(f"o servidor nao respondeu em {_url(porta)}. Veja o log: {LOG}")
 
 
+def _identidade_windows():
+    """Faz a barra de tarefas tratar a janela como "Clipador" (icone proprio), nao como python.exe."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Clipador.Interface")
+    except (OSError, AttributeError):
+        pass
+
+
 def abrir_janela(url: str, modo: str) -> str:
     """Abre a interface. Devolve como abriu: janela | edge | navegador."""
     if modo == "janela":
         try:
             import webview
+            _identidade_windows()
             webview.create_window("Clipador", url, width=1440, height=900, min_size=(1100, 700),
                                   background_color="#0B0B0F")
             webview.start(icon=str(ICONE) if ICONE.exists() else None)
