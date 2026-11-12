@@ -33,6 +33,17 @@ def criar_parser() -> argparse.ArgumentParser:
                         "olhar as imagens (padrao 12)")
     p.add_argument("--sem-visao", action="store_false", default=None, dest="visao",
                    help="Pula a 2a passada (prints do video); escolhe so pela transcricao")
+    p.add_argument("--chat", action="store_true", default=None,
+                   help="Usa o chat da live como sinal (YouTube: baixa sozinho; Twitch: precisa do "
+                        "TwitchDownloaderCLI no PATH). Desligado por padrao")
+    p.add_argument("--chat-arquivo", default=None,
+                   help="Arquivo de chat ja baixado (live_chat.json do YouTube ou JSON do TwitchDownloader); "
+                        "liga o chat")
+    p.add_argument("--sem-cenas", action="store_false", default=None, dest="cenas",
+                   help="Nao mede o movimento na tela (sinal visual e candidatos visuais)")
+    p.add_argument("--candidatos-visuais", type=int, default=None,
+                   help="Trechos de muito movimento na tela (sem fala) que vao direto para a 2a passada "
+                        "(padrao 4; 0 desliga)")
     p.add_argument("--saida", default=None, help="Pasta onde tudo e salvo (padrao saida)")
     return p
 

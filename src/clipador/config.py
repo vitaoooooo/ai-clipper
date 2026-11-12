@@ -25,6 +25,10 @@ class Config:
     sem_ia: bool = False
     visao: bool = True       # 2a passada: IA ve os prints dos candidatos
     candidatos: int = 12     # quantos a 1a passada (so transcricao) pre-seleciona
+    cenas: bool = True       # mede o movimento na tela (local, gratis) e usa como sinal
+    candidatos_visuais: int = 4  # trechos de muito movimento sem fala que vao direto para a 2a passada
+    chat: bool = False       # usa o chat da live como sinal (YouTube via yt-dlp, Twitch via TwitchDownloaderCLI)
+    chat_arquivo: str | None = None  # arquivo de chat ja baixado (liga o chat)
     saida: str = "saida"
     hashtags_extras: list[str] = field(default_factory=list)
 
@@ -33,6 +37,10 @@ class Config:
             raise ValueError("cortes precisa ser pelo menos 1")
         if self.candidatos < 1:
             raise ValueError("candidatos precisa ser pelo menos 1")
+        if self.candidatos_visuais < 0:
+            raise ValueError("candidatos_visuais nao pode ser negativo")
+        if self.chat_arquivo and not Path(self.chat_arquivo).exists():
+            raise ValueError(f"arquivo de chat nao encontrado: {self.chat_arquivo}")
         if self.dmin < 1 or self.dmax < self.dmin:
             raise ValueError(f"duracoes invalidas: min={self.dmin} max={self.dmax}")
         if self.modo not in MODOS:

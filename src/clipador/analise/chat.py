@@ -1,13 +1,68 @@
-"""Picos de chat: momentos em que o chat da live explode (FASE 1 - ainda nao ligado ao pipeline).
+"""Picos de chat: momentos em que o chat da live explode. Opcional (--chat).
 
-Fontes suportadas:
-- YouTube (replay de live): baixar_chat_youtube() usa o yt-dlp.
-- Twitch: baixe o JSON com o TwitchDownloaderCLI
-    TwitchDownloaderCLI chatdownload --id <id-do-vod> -o chat.json
-  e leia com ler_chat_twitch().
+Fontes suportadas (obter_tempos_chat escolhe sozinho):
+- YouTube (replay de live): baixa com o yt-dlp.
+- Twitch: baixa com o TwitchDownloaderCLI, se ele estiver no PATH
+  (https://github.com/lay295/TwitchDownloader). Sem ele, segue sem chat.
+- Qualquer video: --chat-arquivo <arquivo> com o live_chat.json do YouTube ou o JSON do TwitchDownloader.
+Chat e um sinal extra: se nao der para obter, o clipador avisa e continua sem ele.
 """
 import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
+
+
+def obter_tempos_chat(fonte: str, pasta: Path, arquivo: str | Path | None = None) -> list[float]:
+    """Segundo (no video) de cada mensagem do chat. Lista vazia se nao der para obter."""
+    try:
+        if arquivo:
+            return ler_chat_arquivo(Path(arquivo))
+        if Path(fonte).exists():
+            print("  aviso: video local; para usar o chat passe --chat-arquivo <arquivo>")
+            return []
+        if "twitch.tv" in fonte.lower():
+            destino = baixar_chat_twitch(fonte, pasta)
+            return ler_chat_twitch(destino) if destino else []
+        destino = baixar_chat_youtube(fonte, pasta)
+        if destino is None:
+            print("  aviso: esse video nao tem replay de chat (so lives passadas tem)")
+            return []
+        return ler_chat_youtube(destino)
+    except Exception as e:  # chat e opcional: nao derruba o resto
+        print(f"  aviso: nao consegui ler o chat ({str(e)[:120]}); seguindo sem ele")
+        return []
+
+
+def ler_chat_arquivo(arquivo: Path) -> list[float]:
+    """Detecta o formato: JSON do TwitchDownloader ({"comments": [...]}) ou live_chat.json do YouTube."""
+    try:
+        dados = json.loads(arquivo.read_text(encoding="utf-8"))
+        if isinstance(dados, dict) and "comments" in dados:
+            return ler_chat_twitch(arquivo)
+    except json.JSONDecodeError:
+        pass  # live_chat.json do YouTube e uma linha JSON por evento
+    return ler_chat_youtube(arquivo)
+
+
+def baixar_chat_twitch(url: str, pasta: Path) -> Path | None:
+    destino = pasta / "chat_twitch.json"
+    if destino.exists():
+        return destino
+    m = re.search(r"twitch\.tv/videos/(\d+)", url)
+    if not m:
+        print("  aviso: link da Twitch sem id de VOD (twitch.tv/videos/<id>); seguindo sem chat")
+        return None
+    exe = shutil.which("TwitchDownloaderCLI")
+    if exe is None:
+        print("  aviso: TwitchDownloaderCLI nao encontrado no PATH; seguindo sem chat "
+              "(ou baixe o chat e passe --chat-arquivo)")
+        return None
+    print("Baixando o chat da Twitch...")
+    subprocess.run([exe, "chatdownload", "--id", m.group(1), "-o", str(destino)],
+                   capture_output=True, text=True, encoding="utf-8", errors="replace", check=True)
+    return destino if destino.exists() else None
 
 
 def baixar_chat_youtube(url: str, pasta: Path) -> Path | None:
@@ -24,6 +79,7 @@ def baixar_chat_youtube(url: str, pasta: Path) -> Path | None:
         "subtitleslangs": ["live_chat"],
         "outtmpl": str(pasta / "chat.%(ext)s"),
     }
+    print("Baixando o chat do YouTube...")
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
     return destino if destino.exists() else None

@@ -2,6 +2,8 @@
 from pathlib import Path
 
 from clipador.analise.audio import picos_de_audio
+from clipador.analise.cenas import atividade_visual, picos_visuais
+from clipador.analise.chat import obter_tempos_chat, picos_de_chat
 from clipador.analise.transcricao import transcrever
 from clipador.config import Config
 from clipador.fontes import obter_video
@@ -9,10 +11,31 @@ from clipador.publicacao.posts import montar_post, salvar_posts
 from clipador.render.ffmpeg import checar_ffmpeg, duracao, renderizar
 from clipador.render.legendas import gerar_ass
 from clipador.selecao.ajuste import ajustar_cortes
-from clipador.selecao.heuristica import escolher_sem_ia
+from clipador.selecao.heuristica import candidatos_visuais, escolher_sem_ia
 from clipador.selecao.ia import escolher_com_ia
 from clipador.selecao.visao import escolher_com_visao
 from clipador.util import fmt
+
+
+def _picos_chat(fonte: str, pasta: Path, cfg: Config) -> list[dict]:
+    if not (cfg.chat or cfg.chat_arquivo) or cfg.sem_ia:
+        return []
+    tempos = obter_tempos_chat(fonte, pasta, cfg.chat_arquivo)
+    picos = picos_de_chat(tempos)
+    if tempos:
+        print(f"Chat: {len(tempos)} mensagens, {len(picos)} picos")
+    return picos
+
+
+def _picos_visuais(video: Path, pasta: Path, cfg: Config) -> list[dict]:
+    if not cfg.cenas or cfg.sem_ia:
+        return []
+    cache = pasta / "atividade_visual.json"
+    if not cache.exists():
+        print("Medindo o movimento na tela...")
+    picos = picos_visuais(atividade_visual(video, cache=cache))
+    print(f"Movimento na tela: {len(picos)} picos")
+    return picos
 
 
 def executar(fonte: str, cfg: Config) -> list[dict]:
@@ -26,6 +49,9 @@ def executar(fonte: str, cfg: Config) -> list[dict]:
     # 2-3. analise (cada uma com cache na pasta do video)
     segs = transcrever(video.caminho, video.pasta, cfg.whisper, cfg.idioma)
     picos = picos_de_audio(video.caminho, cache=video.pasta / "picos_audio.json")
+    picos_chat = _picos_chat(fonte, video.pasta, cfg)
+    picos_vis = _picos_visuais(video.caminho, video.pasta, cfg)
+    sinais_ia = {"picos_chat": picos_chat, "picos_vis": picos_vis}
 
     # 4. escolha
     if cfg.sem_ia:
@@ -33,19 +59,26 @@ def executar(fonte: str, cfg: Config) -> list[dict]:
         cortes = ajustar_cortes(brutos, segs, video.duracao, cfg.cortes, cfg.dmin, cfg.dmax)
     elif not cfg.visao:
         brutos = escolher_com_ia(segs, picos, video.titulo, cfg.cortes, cfg.dmin, cfg.dmax,
-                                 cfg.modelo, salvar_em=video.pasta / "resposta_ia.json")
+                                 cfg.modelo, salvar_em=video.pasta / "resposta_ia.json", **sinais_ia)
         cortes = ajustar_cortes(brutos, segs, video.duracao, cfg.cortes, cfg.dmin, cfg.dmax)
     else:
-        # 1a passada: so a fala (Whisper) -> candidatos, ja ajustados em frases e sem sobreposicao
+        # 1a passada: fala (Whisper) + sinais -> candidatos, ja ajustados em frases e sem sobreposicao
         n_cand = max(cfg.candidatos, cfg.cortes)
         brutos = escolher_com_ia(segs, picos, video.titulo, n_cand, cfg.dmin, cfg.dmax,
-                                 cfg.modelo, salvar_em=video.pasta / "resposta_ia.json")
+                                 cfg.modelo, salvar_em=video.pasta / "resposta_ia.json", **sinais_ia)
         candidatos = ajustar_cortes(brutos, segs, video.duracao, n_cand, cfg.dmin, cfg.dmax)
         print(f"{len(candidatos)} candidatos na 1a passada")
-        # 2a passada: prints 1/s + fala de cada candidato -> os N melhores entre eles
-        cortes = escolher_com_visao(candidatos, segs, video.caminho, video.pasta / "frames",
+        # + trechos de muita acao na tela que a fala nao pegou (a 2a passada decide se prestam)
+        extras = candidatos_visuais(picos_vis, candidatos, segs, video.duracao,
+                                    cfg.candidatos_visuais, cfg.dmin, cfg.dmax)
+        if extras:
+            print(f"+ {len(extras)} candidatos visuais (muito movimento na tela): "
+                  + ", ".join(fmt(c.inicio) for c in extras))
+        # 2a passada: prints 1/s + fala + sinais de cada candidato -> os N melhores entre eles
+        cortes = escolher_com_visao(candidatos + extras, segs, video.caminho, video.pasta / "frames",
                                     video.titulo, cfg.cortes, cfg.modelo,
-                                    salvar_em=video.pasta / "resposta_visao.json")
+                                    salvar_em=video.pasta / "resposta_visao.json",
+                                    sinais={"audio": picos, "chat": picos_chat, "visual": picos_vis})
 
     # 5. render
     pasta_cortes = video.pasta / "cortes"

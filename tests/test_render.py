@@ -4,7 +4,7 @@ import shutil
 import pytest
 
 from clipador.analise.audio import picos_de_audio
-from clipador.analise.cenas import trocas_de_cena
+from clipador.analise.cenas import atividade_visual
 from clipador.render.ffmpeg import duracao, renderizar
 from clipador.render.legendas import gerar_ass
 from clipador.util import rodar
@@ -25,7 +25,7 @@ def video(tmp_path_factory):
            "-filter_complex",
            "[0:v][1:v]concat=n=2:v=1[v];"
            "[2:a]volume='if(between(t,8,9),1,0.02)':eval=frame[a]",
-           "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast",
+           "-map", "[v]", "-map", "[a]", "-c:v", "libx264", "-preset", "ultrafast", "-g", "30",
            "-c:a", "aac", str(v)])
     return v
 
@@ -52,6 +52,14 @@ def test_pico_de_audio_no_bip(video):
     assert picos[0]["segundo"] in (8, 9)
 
 
-def test_troca_de_cena(video):
-    trocas = trocas_de_cena(video)
-    assert any(5.5 < t < 6.5 for t in trocas)
+def test_atividade_visual(video, tmp_path):
+    """0-6s: testsrc2 (imagem animada); 6s: troca de cena; 6-12s: barras paradas."""
+    cache = tmp_path / "ativ.json"
+    ativ = atividade_visual(video, cache=cache)
+    mov = ativ["movimento"]
+    assert len(mov) == len(ativ["brilho"]) and len(mov) in (11, 12)  # so keyframes pode perder o ultimo s
+    animado = sum(mov[1:6]) / 5
+    parado = sum(mov[7:]) / len(mov[7:])
+    assert animado > 3 * max(parado, 0.1)       # mexe mais na parte animada
+    assert mov[6] == max(mov)                   # a troca de cena e o maior salto
+    assert cache.exists() and atividade_visual(video, cache=cache) == ativ

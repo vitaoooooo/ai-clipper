@@ -21,9 +21,28 @@ def test_estica_ate_duracao_minima():
     assert c.fim - c.inicio >= 20
 
 
-def test_limita_duracao_maxima():
+def test_limita_duracao_maxima_terminando_em_fim_de_frase():
     [c] = ajustar_cortes([Corte(inicio=0, fim=70, nota=1)], SEGS, 100, 1, 10, 30)
-    assert c.fim - c.inicio == 30
+    assert c.fim - c.inicio <= 30
+    assert c.fim == 20.4                  # fim da frase 12-20 (+0.4), e nao 30 no meio da frase 20-31
+
+
+def test_estica_ate_fim_de_frase():
+    [c] = ajustar_cortes([Corte(inicio=0, fim=4, nota=1)], SEGS, 100, 1, 15, 60)
+    assert c.fim == 20.4                  # 1o fim de frase depois de 15s, nao 15 no meio da fala
+
+
+def test_frase_longa_corta_na_palavra_com_pontuacao():
+    palavras = [{"start": t, "end": t + 0.5, "word": "isso!" if t == 24 else "mano"} for t in range(0, 59)]
+    segs = [{"start": 0, "end": 60, "text": "monologo", "words": palavras}]
+    [c] = ajustar_cortes([Corte(inicio=0, fim=60, nota=1)], segs, 100, 1, 10, 30)
+    assert c.fim == 24.6                  # ultima palavra com pontuacao antes de 30s
+
+
+def test_duracao_minima_61s_para_creator_rewards():
+    segs = [seg(t, t + 7) for t in range(0, 200, 7)]
+    [c] = ajustar_cortes([Corte(inicio=10, fim=40, nota=1)], segs, 300, 1, 61, 90)
+    assert 61 <= c.fim - c.inicio <= 90
 
 
 def test_remove_sobreposicao_mantendo_maior_nota():

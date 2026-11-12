@@ -22,7 +22,7 @@ MAX_FRAMES = 90      # por chamada; abaixo do limite de imagens por pedido
 PARALELO = 4         # processos do Claude Code ao mesmo tempo
 
 PROMPT = """Voce e editor de cortes virais para TikTok. O video original se chama "{titulo}".
-Uma primeira triagem, feita so pela transcricao, separou este trecho como candidato a corte.
+Uma primeira triagem (pela fala ou pelo movimento na tela) separou este trecho como candidato a corte.
 Agora voce tem tambem os prints do video, 1 por segundo (cada imagem vem depois de uma marca
 "t=Xs", o tempo dentro do trecho). Avalie o trecho olhando a IMAGEM junto com a FALA.
 
@@ -31,6 +31,9 @@ Sugestao da triagem: titulo "{titulo_corte}" | motivo: {motivo}
 
 TRANSCRICAO DO TRECHO (tempos do video original):
 {transcricao}
+
+SINAIS NO TRECHO (tempos do video original):
+{sinais}
 
 Considere:
 - Os primeiros 2 segundos prendem visualmente (acao, reacao, algo chamativo na tela)?
@@ -63,15 +66,33 @@ def _transcricao_do_trecho(segs: list[Segmento], ini: float, fim: float) -> str:
     return "\n".join(linhas) or "(sem fala)"
 
 
+def _sinais_do_trecho(sinais: dict | None, ini: float, fim: float) -> str:
+    """Picos de audio/chat/movimento que caem dentro do trecho, para a IA cruzar com as imagens."""
+    s = sinais or {}
+    linhas = []
+    for p in s.get("audio", []):
+        if ini <= p["segundo"] < fim:
+            linhas.append(f"{p['segundo']}s: audio alto (+{p['acima_da_media_db']} dB)")
+    for p in s.get("chat", []):
+        if ini <= p["segundo"] < fim:
+            linhas.append(f"{p['segundo']}s: chat explodiu ({p['vezes_a_media']}x a media)")
+    for p in s.get("visual", []):
+        if p["segundo"] < fim and p["segundo"] + 10 > ini:
+            linhas.append(f"{p['segundo']}s: muito movimento na tela ({p['movimento_x_media']}x a media)")
+    return "\n".join(linhas) or "(nenhum)"
+
+
 def _imagem(caminho: Path) -> dict:
     dados = base64.standard_b64encode(caminho.read_bytes()).decode("ascii")
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": dados}}
 
 
-def _avaliar(c: Corte, frames: list[Path], segs: list[Segmento], titulo: str, modelo: str):
+def _avaliar(c: Corte, frames: list[Path], segs: list[Segmento], titulo: str, modelo: str,
+             sinais: dict | None = None):
     texto = PROMPT.format(titulo=titulo, ini=c.inicio, fim=c.fim, dur=c.duracao,
-                          titulo_corte=c.titulo, motivo=c.motivo,
-                          transcricao=_transcricao_do_trecho(segs, c.inicio, c.fim))
+                          titulo_corte=c.titulo or "(sem titulo)", motivo=c.motivo,
+                          transcricao=_transcricao_do_trecho(segs, c.inicio, c.fim),
+                          sinais=_sinais_do_trecho(sinais, c.inicio, c.fim))
     conteudo: list[dict] = [{"type": "text", "text": texto}]
     for i, f in amostrar(frames, MAX_FRAMES):
         conteudo.append({"type": "text", "text": f"t={i}s"})
@@ -82,15 +103,19 @@ def _avaliar(c: Corte, frames: list[Path], segs: list[Segmento], titulo: str, mo
 
 def escolher_com_visao(candidatos: list[Corte], segs: list[Segmento], video: Path,
                        pasta_frames: Path, titulo: str, n: int, modelo: str,
-                       salvar_em: Path | None = None) -> list[Corte]:
-    """Da a nota final a cada candidato olhando os frames e devolve os `n` melhores."""
+                       salvar_em: Path | None = None, sinais: dict | None = None) -> list[Corte]:
+    """Da a nota final a cada candidato olhando os frames e devolve os `n` melhores.
+
+    `sinais` = {"audio": [...], "chat": [...], "visual": [...]}: os picos que caem em cada trecho
+    vao no prompt daquele candidato.
+    """
     print(f"Tirando prints (1/s) dos {len(candidatos)} candidatos...")
     frames = [extrair_frames(video, c.inicio, c.fim, pasta_frames / f"{c.inicio:.2f}-{c.fim:.2f}")
               for c in candidatos]
 
     print(f"Pedindo pra IA avaliar os candidatos com imagem + fala...")
     with ThreadPoolExecutor(PARALELO) as ex:
-        futuros = [ex.submit(_avaliar, c, f, segs, titulo, modelo)
+        futuros = [ex.submit(_avaliar, c, f, segs, titulo, modelo, sinais)
                    for c, f in zip(candidatos, frames)]
         resultados = []
         for c, fut in zip(candidatos, futuros):

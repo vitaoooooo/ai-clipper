@@ -17,8 +17,8 @@ from clipador.modelos import Corte, Pico, Segmento
 from clipador.util import fmt
 
 PROMPT = """Voce e editor de cortes virais para TikTok. Abaixo esta a transcricao de um video do YouTube
-chamado "{titulo}", com tempos em segundos, e os momentos em que o audio fica bem mais alto que o normal
-(costumam ser reacoes, gritos, explosoes, risadas).{parte}
+chamado "{titulo}", com tempos em segundos, e sinais de onde o video fica mais intenso: audio bem mais
+alto que o normal (reacoes, gritos, explosoes, risadas){outros_sinais}.{parte}
 
 Escolha os {n} melhores trechos para virar cortes independentes de TikTok. Regras:
 - Cada corte deve ter entre {dmin} e {dmax} segundos.
@@ -36,9 +36,7 @@ Para cada corte, preencha:
 - nota: de 0 a 10, quanto potencial viral o trecho tem
 - motivo: por que esse trecho funciona
 
-PICOS DE AUDIO (segundo e quantos dB acima da media):
-{picos}
-
+{sinais}
 TRANSCRICAO:
 {transcricao}
 """
@@ -78,12 +76,39 @@ ENV_DE_API = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 ISOLAMENTO = ("--setting-sources", "", "--strict-mcp-config", "--disable-slash-commands")
 
 
+def texto_sinais(picos: list[Pico], picos_chat: list[dict] | None = None,
+                 picos_vis: list[dict] | None = None) -> str:
+    """Secoes de sinais para o prompt. Chat e movimento so aparecem se existirem."""
+    partes = ["PICOS DE AUDIO (segundo e quantos dB acima da media):\n"
+              + ("\n".join(f"{p['segundo']}s (+{p['acima_da_media_db']} dB)" for p in picos) or "nenhum")]
+    if picos_chat:
+        partes.append("PICOS DE CHAT (segundo em que o chat da live explode, mensagens em 5s e quantas "
+                      "vezes a media):\n" + "\n".join(
+                          f"{p['segundo']}s ({p['mensagens']} msgs, {p['vezes_a_media']}x)" for p in picos_chat))
+    if picos_vis:
+        partes.append("PICOS DE MOVIMENTO NA TELA (inicio de janelas de 10s com muita acao visual, quantas "
+                      "vezes a media; podem ter pouca fala, mas tambem podem ser troca de cena ou menu):\n"
+                      + "\n".join(f"{p['segundo']}s ({p['movimento_x_media']}x)" for p in picos_vis))
+    return "\n\n".join(partes) + "\n"
+
+
 def montar_prompt(segs: list[Segmento], picos: list[Pico], titulo: str,
-                  n: int, dmin: int, dmax: int, parte: str = "") -> str:
+                  n: int, dmin: int, dmax: int, parte: str = "",
+                  picos_chat: list[dict] | None = None, picos_vis: list[dict] | None = None) -> str:
     linhas = "\n".join(f"[{s['start']:.1f}-{s['end']:.1f}] {s['text']}" for s in segs)
-    txt_picos = "\n".join(f"{p['segundo']}s (+{p['acima_da_media_db']} dB)" for p in picos) or "nenhum"
-    return PROMPT.format(titulo=titulo, n=n, dmin=dmin, dmax=dmax, picos=txt_picos,
+    outros = []
+    if picos_chat:
+        outros.append("momentos em que o chat da live explode")
+    if picos_vis:
+        outros.append("momentos de muito movimento na tela")
+    outros_sinais = "".join(f", {o}" for o in outros)
+    return PROMPT.format(titulo=titulo, n=n, dmin=dmin, dmax=dmax, outros_sinais=outros_sinais,
+                         sinais=texto_sinais(picos, picos_chat, picos_vis),
                          transcricao=linhas, parte=parte)
+
+
+def _no_intervalo(picos: list[dict] | None, ini: float, fim: float) -> list[dict]:
+    return [p for p in (picos or []) if ini <= p["segundo"] < fim]
 
 
 def _executavel_claude() -> str:
@@ -183,7 +208,7 @@ def dividir_em_blocos(segs: list[Segmento], bloco: float = BLOCO_SEG,
 
 
 def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmin, dmax,
-                       modelo, cache: Path | None):
+                       modelo, cache: Path | None, picos_chat=None, picos_vis=None):
     if cache is not None and cache.exists():
         print(f"  bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): usando resposta salva")
         return json.loads(cache.read_text(encoding="utf-8"))
@@ -191,8 +216,8 @@ def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmi
     if qtd > 1:
         parte = (f"\n\nEste video e longo e foi dividido em partes. Esta e a parte {i} de {qtd}, "
                  f"de {fmt(ini)} a {fmt(fim)}. Escolha os trechos so dentro dela.")
-    picos_bloco = [p for p in picos if ini <= p["segundo"] < fim]
-    prompt = montar_prompt(segs_bloco, picos_bloco, titulo, n_bloco, dmin, dmax, parte)
+    prompt = montar_prompt(segs_bloco, _no_intervalo(picos, ini, fim), titulo, n_bloco, dmin, dmax, parte,
+                           _no_intervalo(picos_chat, ini, fim), _no_intervalo(picos_vis, ini, fim))
     print(f"  bloco {i}/{qtd} ({fmt(ini)}-{fmt(fim)}): pedindo {n_bloco} trechos...")
     dados, info = chamar_ia(prompt, SCHEMA, modelo)
     registro = {"inicio": ini, "fim": fim, **info, "resposta": dados}
@@ -203,7 +228,9 @@ def _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco, dmi
 
 
 def escolher_com_ia(segs: list[Segmento], picos: list[Pico], titulo: str, n: int,
-                    dmin: int, dmax: int, modelo: str, salvar_em: Path | None = None) -> list[Corte]:
+                    dmin: int, dmax: int, modelo: str, salvar_em: Path | None = None,
+                    picos_chat: list[dict] | None = None,
+                    picos_vis: list[dict] | None = None) -> list[Corte]:
     """Escolhe os cortes so pela transcricao (Whisper) e pelos picos de audio.
 
     Com a 2a passada ligada, isto vira a 1a passada: escolhe os candidatos.
@@ -226,9 +253,10 @@ def escolher_com_ia(segs: list[Segmento], picos: list[Pico], titulo: str, n: int
         n_bloco = n if qtd == 1 else max(2, math.ceil(n * (fim - ini) / total) + 1)
         cache = None
         if pasta_cache is not None:
-            cache = pasta_cache / f"{ini:.0f}-{fim:.0f}_n{n_bloco}_{dmin}-{dmax}_{modelo}.json"
+            sinais = f"c{int(bool(picos_chat))}v{int(bool(picos_vis))}"
+            cache = pasta_cache / f"{ini:.0f}-{fim:.0f}_n{n_bloco}_{dmin}-{dmax}_{sinais}_{modelo}.json"
         return _escolher_no_bloco(i, qtd, ini, fim, segs_bloco, picos, titulo, n_bloco,
-                                  dmin, dmax, modelo, cache)
+                                  dmin, dmax, modelo, cache, picos_chat, picos_vis)
 
     with ThreadPoolExecutor(PARALELO_BLOCOS) as ex:
         futuros = [ex.submit(tarefa, i, ini, fim, s) for i, (ini, fim, s) in enumerate(blocos, 1)]

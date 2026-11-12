@@ -13,6 +13,9 @@ idioma = "pt"
 modelo = "claude-sonnet-5-5"
 candidatos = 12      # 1a passada: trechos pre-selecionados so pela transcricao
 visao = true         # 2a passada: IA ve 1 print por segundo de cada candidato
+cenas = true         # mede o movimento na tela (local, gratis) e usa como sinal
+candidatos_visuais = 4   # trechos de muita acao sem fala que vao direto para a 2a passada (0 desliga)
+chat = false         # usa o chat da live como sinal (YouTube; Twitch precisa do TwitchDownloaderCLI)
 saida = "saida"
 hashtags_extras = ["#gta6"]
 
@@ -24,3 +27,10 @@ modo = "facecam"
 # Ex.: facecam no canto superior esquerdo ocupando 25% da largura e 30% da altura.
 facecam = [0.0, 0.0, 0.25, 0.30]
 hashtags_extras = ["#gta6", "#gtavi", "#gta"]
+chat = true
+
+# Cortes com mais de 1 minuto, para o Creator Rewards do TikTok.
+# Uso: clipador "<link>" --canal rewards
+[canais.rewards]
+dmin = 61
+dmax = 90
